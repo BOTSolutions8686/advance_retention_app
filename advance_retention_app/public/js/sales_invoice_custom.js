@@ -1,6 +1,6 @@
 frappe.ui.form.on("Sales Invoice", {
 	refresh: function(frm) {
-		// referesh
+		// refresh
 	},
 	onload: function(frm) {
 		if (frm.doc.invoice_type === 'Advance Invoice') {
@@ -228,24 +228,22 @@ function calculating_total(frm) {
 
 function setAdditionalDeductionAccount(frm) {
 	if (frm.doc.apply_discount_on != "Net Total") {
-		frappe.call({
-			method: "frappe.client.get_list",
-			args: {
-				doctype: "Account",
-				filters: [
-					["account_name", "like", "%Deductions And Retentions%"],
-					["company", "=", frm.doc.company]
-				],
-				fields: ["name", "account_name"]
-			},
-			callback: function(response) {
-				if (response.message) {
-					response.message.forEach(account => {
-						frm.set_value("additional_discount_account", account.name)
-					});
-				} else {
-					console.log("No accounts found containing 'retention'.");
-				}
+		// frappe.db.get_list is the v15/v16 desk API; it respects permissions and
+		// returns a Promise. frappe.client.get_list is deprecated for this use.
+		frappe.db.get_list("Account", {
+			filters: [
+				["account_name", "like", "%Deductions And Retentions%"],
+				["company", "=", frm.doc.company]
+			],
+			fields: ["name", "account_name"],
+			limit: 0
+		}).then(function (accounts) {
+			if (accounts && accounts.length) {
+				accounts.forEach(function (account) {
+					frm.set_value("additional_discount_account", account.name);
+				});
+			} else {
+				console.log("No accounts found containing 'Deductions And Retentions'.");
 			}
 		});
 	}

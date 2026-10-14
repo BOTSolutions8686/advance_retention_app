@@ -1,14 +1,16 @@
 app_name = "advance_retention_app"
 app_title = "Advance Retention App"
 app_publisher = "khayam khan"
-app_description = "A custom Frappe Application that will introduce Advance Invoice payment and deduction in sales invoice"
+app_description = "A custom Frappe Application that introduces Advance Invoice payment and deduction in Sales Invoice (Frappe v16 compatible)"
 app_email = "khayamkhan852@gmail.com"
 app_license = "mit"
 
 # Apps
 # ------------------
 
-# required_apps = []
+# ERPNext supplies the Sales Invoice doctype this app customises, so it must be
+# installed first. Frappe resolves this automatically for `bench install-app`.
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -277,6 +279,7 @@ after_install = "advance_retention_app.setup.install.after_install"
 # 	},
 # 	{
 # 		"doctype": "{doctype_3}",
+# 		"filter_by": "{filter_by}",
 # 		"strict": False,
 # 	},
 # 	{
@@ -297,4 +300,3 @@ after_install = "advance_retention_app.setup.install.after_install"
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
-
