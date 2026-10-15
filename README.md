@@ -19,6 +19,20 @@ This is a **Frappe v16–compatible** port of
 [`khayamkhan852/advance_retention_app`](https://github.com/khayamkhan852/advance_retention_app)
 (upstream `main` at `43b6b39`), originally written by khayam khan and released under the MIT licence.
 
+> **Status: draft — not for live invoicing in Saudi Arabia (ZATCA Phase 2).**
+> Isolated testing with `ksa_compliance` 0.61.11 (synthetic data) found accounting defects that are
+> not yet resolved:
+>
+> - **Advances:** allocating an Advance Invoice on the final invoice only changes the app's display
+>   fields. ERPNext and the ZATCA XML still carry the full final amount with no prepaid amount, so VAT on
+>   the advanced portion is declared twice and receivables are overstated until settled separately.
+> - **Retentions:** the default deduction path (discount on Grand Total, cash/non-trade discount) books the
+>   retention as an expense and produces ZATCA XML that fails EN rule BR-CO-11. The Net Total path
+>   validates but reduces VAT and revenue by the retained amount.
+>
+> The accounting treatment for advances and retentions must be decided before this app is used for
+> real invoices.
+
 ## Compatibility
 
 | Item | Value |
@@ -69,7 +83,7 @@ This is a **Frappe v16–compatible** port of
 2. From the bench directory:
 
 	```
-	bench get-app advance_retention_app https://github.com/ArslanMalyieck/advance_retention_app.git
+	bench get-app advance_retention_app https://github.com/BOTSolutions8686/advance_retention_app.git
 	bench --site <your-site> install-app advance_retention_app
 	```
 
