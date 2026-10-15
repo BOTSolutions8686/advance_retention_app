@@ -59,11 +59,26 @@ def validate_prepayment_entry(doc, method=None):
 		frappe.throw(_("A Sales Taxes and Charges Template is required on a prepayment invoice."))
 
 	_require_supported_currency(doc.company, doc.paid_from_account_currency, doc.paid_to_account_currency)
+
+	# ksa_compliance takes the prepayment VAT rate from the template (ERPNext clears the
+	# rate on "Actual" rows), so the template must hold one supported rate and the row's
+	# amount must be the VAT inside the VAT-inclusive amount received.
+	rate = template_vat_rate(doc.sales_taxes_and_charges_template)
 	taxes = doc.get("taxes") or []
-	if len(taxes) != 1 or flt(taxes[0].rate) not in SUPPORTED_VAT_RATES:
+	supported = ", ".join(f"{r:g}%" for r in SUPPORTED_VAT_RATES)
+	if rate not in SUPPORTED_VAT_RATES or len(taxes) != 1:
 		frappe.throw(
-			_("A prepayment invoice must have exactly one VAT row at {0}%; other rates are not yet supported.").format(
-				", ".join(f"{r:g}" for r in SUPPORTED_VAT_RATES)
+			_(
+				"A prepayment invoice must use a template with a single VAT rate of {0} and exactly one VAT row; "
+				"other rates are not yet supported."
+			).format(supported)
+		)
+	gross = flt(doc.paid_amount)
+	expected_vat = flt(gross - gross / (1 + rate / 100), 2)
+	if abs(abs(flt(taxes[0].tax_amount)) - expected_vat) > 0.01:
+		frappe.throw(
+			_("The VAT row on a prepayment of {0} must be {1} ({2}% included in the amount received).").format(
+				frappe.format(gross, {"fieldtype": "Currency"}), frappe.format(expected_vat, {"fieldtype": "Currency"}), f"{rate:g}"
 			)
 		)
 
@@ -143,9 +158,19 @@ def on_cancel_sales_invoice(doc, method=None):
 	_cancel_journal_entries(f"Sales Invoice:{doc.name}")
 
 
+def template_vat_rate(template):
+	rates = frappe.get_all(
+		"Sales Taxes and Charges",
+		filters={"parent": template, "parenttype": "Sales Taxes and Charges Template"},
+		pluck="rate",
+	)
+	return flt(rates[0]) if len(rates) == 1 else None
+
+
 def advance_vat(pe, allocated_amount):
-	"""VAT inside a VAT-inclusive allocation, computed as ksa_compliance does for KSA-32."""
-	rate = flt(pe.taxes[0].rate) if pe.get("taxes") else 0
+	"""VAT inside a VAT-inclusive allocation, computed as ksa_compliance does for KSA-32
+	(using the rate of the prepayment's Sales Taxes and Charges Template)."""
+	rate = template_vat_rate(pe.sales_taxes_and_charges_template)
 	if not rate:
 		gross, vat = flt(pe.paid_amount), abs(flt(pe.total_taxes_and_charges))
 		rate = vat * 100 / (gross - vat) if gross > vat else 0
