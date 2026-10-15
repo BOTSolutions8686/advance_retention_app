@@ -41,24 +41,10 @@ fixtures = [
                     "Sales Invoice-custom_in_words_arabic",
                     "Sales Invoice-custom_retentions_and_retentions",
                     "Sales Invoice-custom_retentions_and_deductions_table",
+                    "Sales Invoice-custom_retention_amount",
+                    "Sales Invoice-custom_retention_due_date",
                     "Sales Invoice-custom_total_deductions_and_retentions",
                     "Sales Invoice-custom_column_break_vnklc"
-                ]
-            ]
-        ]
-    },
-    {
-        "dt": "Property Setter", "filters": [
-            [
-                "name", "in", [
-                    "Sales Invoice-discount_amount-Label",
-                    "Sales Invoice-apply_discount_on-label",
-                    "Sales Invoice-base_discount_amount-label",
-                    "Sales Invoice-base_discount_amount-hidden",
-                    "Sales Invoice-additional_discount_account-label",
-                    "Sales Invoice-additional_discount_percentage-label",
-                    "Sales Invoice-additional_discount_percentage-read_only",
-                    "Sales Invoice-additional_discount_percentage-hidden",
                 ]
             ]
         ]
@@ -139,7 +125,6 @@ doctype_js = {
 # ------------
 
 before_install = "advance_retention_app.setup.install.before_install"
-after_install = "advance_retention_app.setup.install.after_install"
 
 # Uninstallation
 # ------------
@@ -192,6 +177,12 @@ before_uninstall = "advance_retention_app.setup.install.before_uninstall"
 # Document Events
 # ---------------
 # Hook on document methods and events
+
+doc_events = {
+	"Sales Invoice": {
+		"validate": "advance_retention_app.customizations.sales_invoice.apply_retention_holdback",
+	}
+}
 
 # doc_events = {
 # 	"*": {
