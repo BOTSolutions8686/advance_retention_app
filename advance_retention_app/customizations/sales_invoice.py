@@ -198,7 +198,11 @@ def _set_schedule_amount(row, amount, payable, conversion_rate):
 def _set_net_amount_due(doc, retention):
 	"""Server-side values for the app's print fields; VAT and taxable totals are untouched."""
 	invoice_total = flt(doc.get("rounded_total") or doc.grand_total)
-	net_for_period = flt(invoice_total - flt(doc.get("vat_including_allocated_total")), doc.precision("grand_total"))
+	# ERPNext advances (prepayment Payment Entries allocated on this invoice) are what
+	# actually settle the receivable; the app's own allocation table is display-only
+	# and is used only when no ERPNext advance is allocated.
+	advances = flt(doc.get("total_advance")) or flt(doc.get("vat_including_allocated_total"))
+	net_for_period = flt(invoice_total - advances, doc.precision("grand_total"))
 	doc.net_invoice_for_the_period_total = net_for_period
 	doc.amount_to_be_in_words = flt(net_for_period - retention, doc.precision("grand_total"))
 	doc.in_words_english = get_amount_in_english(doc.amount_to_be_in_words, doc.currency) if doc.amount_to_be_in_words else ""
