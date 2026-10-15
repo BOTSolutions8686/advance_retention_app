@@ -24,6 +24,12 @@ from frappe import _
 from frappe.utils import flt
 
 CLEARING_ACCOUNT_NAME = "VAT on Advances Clearing"
+
+# Combinations verified in the BOT-0143 target-version lab with ksa_compliance 0.61.11:
+# company currency SAR, a single standard-rated VAT row at 15%. Anything else is refused
+# until it has been tested.
+SUPPORTED_CURRENCY = "SAR"
+SUPPORTED_VAT_RATES = (15.0,)
 SOURCE_FIELD = "custom_bot_advance_vat_source"
 
 
@@ -52,7 +58,16 @@ def validate_prepayment_entry(doc, method=None):
 	if not doc.get("sales_taxes_and_charges_template"):
 		frappe.throw(_("A Sales Taxes and Charges Template is required on a prepayment invoice."))
 
-	for row in doc.get("taxes") or []:
+	_require_supported_currency(doc.company, doc.paid_from_account_currency, doc.paid_to_account_currency)
+	taxes = doc.get("taxes") or []
+	if len(taxes) != 1 or flt(taxes[0].rate) not in SUPPORTED_VAT_RATES:
+		frappe.throw(
+			_("A prepayment invoice must have exactly one VAT row at {0}%; other rates are not yet supported.").format(
+				", ".join(f"{r:g}" for r in SUPPORTED_VAT_RATES)
+			)
+		)
+
+	for row in taxes:
 		if row.account_head != clearing:
 			frappe.throw(
 				_("Row {0}: a prepayment invoice must book its VAT to {1}, not {2}.").format(
@@ -136,6 +151,28 @@ def advance_vat(pe, allocated_amount):
 		rate = vat * 100 / (gross - vat) if gross > vat else 0
 	allocated = abs(flt(allocated_amount))
 	return flt(allocated - allocated / (1 + rate / 100), 2)
+
+
+def validate_sales_invoice_scope(doc, method=None):
+	"""Allocating prepayments or holding a retention is supported only in the tested currency."""
+	uses_prepayment = any(
+		a.reference_type == "Payment Entry"
+		and flt(a.allocated_amount)
+		and frappe.db.get_value("Payment Entry", a.reference_name, "custom_prepayment_invoice")
+		for a in doc.get("advances") or []
+	)
+	if uses_prepayment or doc.get("deductions"):
+		_require_supported_currency(doc.company, doc.currency)
+
+
+def _require_supported_currency(company, *currencies):
+	company_currency = frappe.get_cached_value("Company", company, "default_currency")
+	if company_currency != SUPPORTED_CURRENCY or any(c and c != company_currency for c in currencies):
+		frappe.throw(
+			_(
+				"Advances and retentions are supported only in {0} (company currency); this document uses {1}."
+			).format(SUPPORTED_CURRENCY, ", ".join(sorted({c for c in (company_currency, *currencies) if c})))
+		)
 
 
 # Retire the display-only Advance Invoice mechanism

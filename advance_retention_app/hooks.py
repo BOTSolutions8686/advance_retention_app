@@ -185,6 +185,7 @@ doc_events = {
 	"Sales Invoice": {
 		"validate": [
 			"advance_retention_app.customizations.prepayment.block_legacy_advance_invoice",
+			"advance_retention_app.customizations.prepayment.validate_sales_invoice_scope",
 			"advance_retention_app.customizations.sales_invoice.apply_retention_holdback",
 		],
 		"on_submit": "advance_retention_app.customizations.prepayment.on_submit_sales_invoice",
