@@ -140,3 +140,53 @@ def remove_discount_relabels():
 		if frappe.db.get_value("Property Setter", name, "module") == APP_MODULE:
 			frappe.delete_doc("Property Setter", name, ignore_permissions=True, force=True)
 	frappe.clear_cache(doctype="Sales Invoice")
+
+
+def after_install():
+	setup_advance_vat_clearing_accounts()
+
+
+def setup_advance_vat_clearing_accounts():
+	"""Create 'VAT on Advances Clearing' under Duties and Taxes for each company and set it on the Company.
+
+	Idempotent: an existing account or an already configured company is left as it is.
+	"""
+	from advance_retention_app.customizations.prepayment import CLEARING_ACCOUNT_NAME
+
+	# after_install hooks and post-model-sync patches run before fixtures are synced,
+	# so make sure the Company and Journal Entry custom fields exist first.
+	if not frappe.get_meta("Company").has_field("custom_advance_vat_clearing_account"):
+		from frappe.utils.fixtures import sync_fixtures
+
+		sync_fixtures("advance_retention_app")
+		frappe.clear_cache(doctype="Company")
+
+	for company in frappe.get_all("Company", fields=["name", "abbr"]):
+		if frappe.db.get_value("Company", company.name, "custom_advance_vat_clearing_account"):
+			continue
+
+		account = frappe.db.get_value("Account", {"company": company.name, "account_name": CLEARING_ACCOUNT_NAME})
+		if not account:
+			parent = frappe.db.get_value(
+				"Account", {"company": company.name, "account_name": "Duties and Taxes", "is_group": 1}
+			)
+			if not parent:
+				print(f"No 'Duties and Taxes' group for {company.name}; set the Advance VAT Clearing Account manually.")
+				continue
+			account = (
+				frappe.get_doc(
+					{
+						"doctype": "Account",
+						"account_name": CLEARING_ACCOUNT_NAME,
+						"parent_account": parent,
+						"company": company.name,
+						"account_type": "Tax",
+						"is_group": 0,
+					}
+				)
+				.insert(ignore_permissions=True)
+				.name
+			)
+
+		frappe.db.set_value("Company", company.name, "custom_advance_vat_clearing_account", account)
+		print(f"Advance VAT clearing account for {company.name}: {account}")

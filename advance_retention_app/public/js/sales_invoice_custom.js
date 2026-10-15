@@ -1,20 +1,12 @@
 frappe.ui.form.on("Sales Invoice", {
-	refresh: function(frm) {
-		// refresh
+	// The app's Advance Invoice / allocation table is retired: advances are ZATCA
+	// prepayment invoices (Payment Entry, 386) allocated in the standard Advances
+	// table. The old section is only shown on historical invoices that used it.
+	refresh: function (frm) {
+		toggle_legacy_advance_section(frm);
 	},
-	onload: function(frm) {
-		if (frm.doc.invoice_type === 'Advance Invoice') {
-			frm.set_df_property('advance_invoices_section', 'hidden', 1);
-		} else {
-			frm.set_df_property('advance_invoices_section', 'hidden', 0);
-		}
-	},
-	invoice_type: function (frm) {
-		if (frm.doc.invoice_type === 'Advance Invoice') {
-			frm.set_df_property('advance_invoices_section', 'hidden', 1);
-		} else {
-			frm.set_df_property('advance_invoices_section', 'hidden', 0);
-		}
+	onload: function (frm) {
+		toggle_legacy_advance_section(frm);
 	},
 	get_advance_sales_payment: function (frm) {
 		frm.clear_table('payment_invoices');
@@ -160,3 +152,7 @@ frappe.ui.form.on("Advance Payments", {
 		frappe.model.set_value(cdt, cdn, "allocated", allocated);
 	}
 });
+
+function toggle_legacy_advance_section(frm) {
+	frm.toggle_display("advance_invoices_section", (frm.doc.payment_invoices || []).length > 0);
+}
