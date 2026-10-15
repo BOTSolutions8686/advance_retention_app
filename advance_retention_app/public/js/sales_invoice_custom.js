@@ -116,7 +116,7 @@ frappe.ui.form.on("Sales Deduction", {
 		frm.set_value("discount_amount", total_amount);
 	},
 	deductions_remove: function (frm) {
-		total_amount = 0;
+		var total_amount = 0;
 
 		frm.doc.deductions.forEach(function (row) {
 			total_amount += row.deduction_amount;

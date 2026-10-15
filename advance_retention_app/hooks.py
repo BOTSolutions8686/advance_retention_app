@@ -39,7 +39,6 @@ fixtures = [
                     "Sales Invoice-custom_net_invoice_for_the_period_total",
                     "Sales Invoice-custom_in_words_english",
                     "Sales Invoice-custom_in_words_arabic",
-                    "deductions_and_retentions_tab_break",
                     "Sales Invoice-custom_retentions_and_retentions",
                     "Sales Invoice-custom_retentions_and_deductions_table",
                     "Sales Invoice-custom_total_deductions_and_retentions",
@@ -60,7 +59,6 @@ fixtures = [
                     "Sales Invoice-additional_discount_percentage-label",
                     "Sales Invoice-additional_discount_percentage-read_only",
                     "Sales Invoice-additional_discount_percentage-hidden",
-                    "Sales Invoice-main-field_order",
                 ]
             ]
         ]
@@ -140,13 +138,13 @@ doctype_js = {
 # Installation
 # ------------
 
-# before_install = "advance_retention_app.install.before_install"
+before_install = "advance_retention_app.setup.install.before_install"
 after_install = "advance_retention_app.setup.install.after_install"
 
 # Uninstallation
 # ------------
 
-# before_uninstall = "advance_retention_app.uninstall.before_uninstall"
+before_uninstall = "advance_retention_app.setup.install.before_uninstall"
 # after_uninstall = "advance_retention_app.uninstall.after_uninstall"
 
 # Integration Setup

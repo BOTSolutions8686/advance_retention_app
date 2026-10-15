@@ -1,4 +1,4 @@
-# Copyright (c) 2025, BOT Solutions and contributors
+# Copyright (c) 2025, khayam khan and contributors
 # For license information, please see license.txt
 
 import frappe
@@ -59,10 +59,13 @@ def get_advance_sales_invoices(customer, invoice_type):
 		if remaining_advance > 0:
 			tax_rows = frappe.get_all(
 				"Sales Taxes and Charges",
-				filters={"parent": invoice.name},
+				filters={"parent": invoice.name, "parenttype": "Sales Invoice"},
 				fields=["tax_amount", "rate"],
+				order_by="idx asc",
 			)
 			invoice["tax_amount"] = sum(flt(row.tax_amount) for row in tax_rows)
+			# Use the first tax row (by row order) deterministically; the original
+			# aggregate query returned an arbitrary row's rate.
 			invoice["rate"] = flt(tax_rows[0].rate) if tax_rows else 0
 
 			filtered_invoices.append(invoice)

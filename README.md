@@ -15,7 +15,9 @@ A custom Frappe/ERPNext application that introduces **Advance Invoice** payment 
 fields, property setters and the `Invoice Type` / `Deduction Type` master doctypes,
 plus child tables for advance-payment allocation and deductions.
 
-This is a **Frappe v16–compatible** port of `khayamkhan852/advance_retention_app`.
+This is a **Frappe v16–compatible** port of
+[`khayamkhan852/advance_retention_app`](https://github.com/khayamkhan852/advance_retention_app)
+(upstream `main` at `43b6b39`), originally written by khayam khan and released under the MIT licence.
 
 ## Compatibility
 
@@ -39,6 +41,26 @@ This is a **Frappe v16–compatible** port of `khayamkhan852/advance_retention_a
   instead of silently swallowing them.
 - **Packaging.** `pyproject.toml` declares `requires-python = ">=3.10"`; app version
   bumped to `16.0.0`.
+
+### Changes in 16.0.1
+
+- **No whole-form layout override.** The `Sales Invoice-main-field_order` Property Setter
+  fixture (a snapshot of an older Sales Invoice layout that omitted v16 fields and was
+  re-applied on every `bench migrate`) and the tab break that depended on it were removed.
+  Custom fields are now anchored to fields that exist in ERPNext v16:
+  the Advance Invoices section after `has_subcontracted`, the net-amount fields after
+  `rounded_total`, and the Retentions and Deductions section before Additional Discount.
+- **Upgrade patch.** `remove_legacy_layout` deletes the app-shipped field_order snapshot
+  (only when it contains this app's fields), the module-less `base_discount_amount` hidden
+  setter and the old tab break on sites that installed an earlier revision.
+- **Field-conflict guard.** `before_install` refuses to install when any of the app's
+  Sales Invoice fieldnames (for example `invoice_type`, `deductions`) already exists as a
+  standard field or another owner's Custom Field.
+- **Uninstall archive.** `before_uninstall` exports the Advance Payments and Sales
+  Deduction rows to `sites/<site>/private/backups/advance_retention_app_uninstall_*.json`
+  before `uninstall-app` drops those tables.
+- All Property Setter fixtures now belong to the app module so uninstall removes them.
+- Advance lookup reads the tax rate from the first tax row by row order.
 
 ## Installation
 
@@ -65,11 +87,17 @@ bench --site <your-site> uninstall-app advance_retention_app
 bench --site <your-site> clear-cache
 ```
 
-`uninstall-app` removes the app's doctypes, custom fields and property setters. The
-`Deductions And Retentions` account created by `after_install` is a normal Account
-record and, if you do not want to keep it, must be removed manually after the app is
-uninstalled. Always take a database backup before installing or uninstalling on a
-production site.
+`uninstall-app` removes the app's doctypes, custom fields and property setters and
+drops the Advance Payments and Sales Deduction tables (their rows are archived to a JSON
+file first). It does **not** restore the site to its pre-install state:
+
+- the database columns of the removed Sales Invoice custom fields keep their values;
+- the `Deductions And Retentions` account created by `after_install` is kept because it
+  may carry GL entries.
+
+The only full rollback is restoring the database backup taken immediately before
+installation, which also discards every transaction recorded after that backup. Agree
+the rollback window before installing on a production site.
 
 ## Contributions and Community
 
