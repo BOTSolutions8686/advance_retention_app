@@ -61,8 +61,10 @@ def before_install():
 def remove_legacy_layout():
 	"""Remove the whole-form field_order override and related records left by earlier revisions.
 
-	The field_order Property Setter is only removed when it contains this app's
-	fields, i.e. it is the snapshot shipped by the app rather than a site's own layout.
+	The field_order Property Setter is only removed when it is the snapshot shipped
+	by earlier revisions, identified by the tab break that only existed there. A
+	layout the site saves after installing 16.0.1+ also lists this app's fields, so
+	that alone must not be treated as app-owned.
 	"""
 	field_order = frappe.db.get_value(
 		"Property Setter", "Sales Invoice-main-field_order", ["value", "module"], as_dict=True
@@ -72,7 +74,7 @@ def remove_legacy_layout():
 			order = json.loads(field_order.value or "[]")
 		except ValueError:
 			order = []
-		if field_order.module == APP_MODULE or {"payment_invoices", "deductions"} <= set(order):
+		if field_order.module == APP_MODULE or "deductions_and_retentions_tab_break" in order:
 			frappe.delete_doc("Property Setter", "Sales Invoice-main-field_order", ignore_permissions=True, force=True)
 
 	hidden = frappe.db.get_value(
