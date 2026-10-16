@@ -1,14 +1,14 @@
 [project]
 name = "advance_retention_app"
 authors = [
-    { name = "khayam khan", email = "khayamkhan852@gmail.com"}
+    { name = "khayam khan", email = "khayamkhan852@gmail.com" }
 ]
-description = "A custom Frappe Application that will introduce Advance Invoice payment and deduction in sales invoice"
+description = "A custom Frappe Application that introduces Advance Invoice payment and deduction in Sales Invoice (Frappe v16 compatible)"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
-    # "frappe~=15.0.0" # Installed and managed by bench.
+    # "frappe~=16.0.0" # Installed and managed by bench.
 ]
 
 [build-system]
