@@ -106,6 +106,32 @@ The app's own *Advance Invoice* type and *Advance Payment Invoices* allocation t
 prepayment invoices. New or draft invoices may no longer use them. Submitted history is unchanged, and the old section
 is shown only on invoices that contain rows.
 
+### Tested scope and guards
+
+Verified on Frappe 16.51.1 / ERPNext 16.50.0 / HRMS 16.50.0 with `ksa_compliance` 0.61.11 and
+`bot_saudilization` 0.0.1, using synthetic data, through the Desk and in server tests. Only that tested
+combination is accepted:
+
+- the company currency must be **SAR**, and prepayments, invoices allocating them, and invoices holding a
+  retention must use it;
+- a prepayment invoice's Sales Taxes and Charges Template must hold a single **15%** VAT row (`ksa_compliance` takes
+  the prepayment rate from the template). The Payment Entry must have one VAT row equal to the VAT included in the
+  amount received.
+
+Anything else is refused with a message until it has been tested.
+
+### Using it in the Desk
+
+- Selecting the Sales Taxes and Charges Template on the Payment Entry fills an *On Paid Amount / Add* row
+  for the output VAT account. Replace it with one row: *Actual*, *Deduct*, account *VAT on Advances Clearing*,
+  with the VAT amount included in the amount received.
+- On the Sales Invoice, **Get Advances Received** lists every unallocated advance. That includes prepayments
+  recorded before 16.1.0, which have no VAT correction, and the invoice shows a warning when one is allocated.
+- Printed invoices: *BOT Sales Invoice* and *ZATCA Phase 2 Print Format* show the full taxable amount, VAT and gross
+  total. They do **not** show the prepaid amount, the retention or the net amount due. The printed due date is
+  the retention due date, because ERPNext uses the last payment-schedule date. Check the site's own print format
+  before go-live.
+
 ### Advance refunds and cancellation (not automated)
 
 - `ksa_compliance` blocks cancelling a 386 prepayment Payment Entry and a 388 Sales Invoice. Corrections go

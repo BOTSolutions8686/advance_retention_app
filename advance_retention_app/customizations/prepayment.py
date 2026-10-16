@@ -189,6 +189,26 @@ def validate_sales_invoice_scope(doc, method=None):
 	if uses_prepayment or doc.get("deductions"):
 		_require_supported_currency(doc.company, doc.currency)
 
+	# "Get Advances Received" also offers prepayments recorded before 16.1.0. Their VAT
+	# was booked without the clearing correction, so no settlement entry is made for them.
+	legacy = [
+		a.reference_name
+		for a in doc.get("advances") or []
+		if a.reference_type == "Payment Entry"
+		and flt(a.allocated_amount)
+		and frappe.db.get_value("Payment Entry", a.reference_name, "custom_prepayment_invoice")
+		and not _uses_clearing(frappe.get_cached_doc("Payment Entry", a.reference_name))
+	]
+	if legacy:
+		frappe.msgprint(
+			_(
+				"Prepayment {0} was recorded before the advance VAT correction; no automatic VAT settlement "
+				"entry will be made for it. Ask the accountant to review its VAT before submitting."
+			).format(", ".join(legacy)),
+			indicator="orange",
+			alert=True,
+		)
+
 
 def _require_supported_currency(company, *currencies):
 	company_currency = frappe.get_cached_value("Company", company, "default_currency")
