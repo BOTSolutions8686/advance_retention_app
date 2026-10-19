@@ -41,12 +41,12 @@ def get_transfer(invoice, include_cancelled=False):
 	)
 
 
-def _existing_transfer_locked(invoice, exclude=None):
-	"""Any submitted or cancelled transfer, read with a lock so concurrent writers see each other."""
+def _existing_transfer_locked(invoice, exclude=None, include_cancelled=True):
+	"""An existing transfer, read with a lock so concurrent writers see each other."""
 	rows = frappe.db.sql(
 		"""select name from `tabJournal Entry` where custom_bot_retention_invoice = %s
-		and docstatus in (1, 2) and name != %s limit 1 for update""",
-		(invoice, exclude or ""),
+		and docstatus in %s and name != %s limit 1 for update""",
+		(invoice, (1, 2) if include_cancelled else (1,), exclude or ""),
 	)
 	return rows[0][0] if rows else None
 
@@ -61,8 +61,12 @@ def _settled_on(invoice, posting_date):
 	return max(getdate(posting_date), getdate(last or posting_date))
 
 
-def transfer_retention(invoice):
-	"""Create the transfer when the invoice's outstanding has fallen to the retained amount."""
+def transfer_retention(invoice, after_cancelled=False):
+	"""Create the transfer when the invoice's outstanding has fallen to the retained amount.
+
+	Automatic triggers never recreate a cancelled transfer; an Accounts Manager can
+	(retransfer_retention).
+	"""
 	si = frappe.get_doc("Sales Invoice", invoice)
 	retention = flt(si.get("custom_retention_amount"))
 	if si.docstatus != 1 or si.is_return or not retention:
@@ -72,7 +76,7 @@ def transfer_retention(invoice):
 	locked = frappe.db.sql(
 		"select outstanding_amount from `tabSales Invoice` where name = %s for update", invoice
 	)
-	if _existing_transfer_locked(invoice):
+	if _existing_transfer_locked(invoice, include_cancelled=not after_cancelled):
 		return None
 
 	outstanding = flt(locked[0][0])
@@ -118,6 +122,17 @@ def transfer_retention(invoice):
 	je.insert()
 	je.submit()
 	return je.name
+
+
+@frappe.whitelist()
+def retransfer_retention(invoice):
+	"""Accountant's decision after cancelling a transfer: transfer the held retention again."""
+	frappe.only_for("Accounts Manager")
+	frappe.has_permission("Sales Invoice", "read", invoice, throw=True)
+	name = transfer_retention(invoice, after_cancelled=True)
+	if not name:
+		frappe.throw(_("Nothing to transfer: the invoice has an active transfer, or its amount due now is not yet collected."))
+	return name
 
 
 # Triggers
@@ -167,7 +182,7 @@ def before_submit_journal_entry(doc, method=None):
 	if not invoice:
 		return
 	frappe.db.sql("select name from `tabSales Invoice` where name = %s for update", invoice)
-	other = _existing_transfer_locked(invoice, exclude=doc.name)
+	other = _existing_transfer_locked(invoice, exclude=doc.name, include_cancelled=False)
 	if other:
 		frappe.throw(_("Invoice {0} already has a retention transfer ({1}).").format(invoice, other))
 
@@ -266,6 +281,13 @@ def retention_status(invoice, as_of=None):
 		overdue=bool(outstanding > TOLERANCE and due and getdate(due) < getdate(as_of or nowdate())),
 		transfer=transfer,
 		currency=si.currency,
+		can_retransfer=bool(
+			not as_of
+			and not transfer
+			and outstanding > TOLERANCE
+			and flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) <= retention + TOLERANCE
+			and get_transfer(invoice, include_cancelled=True)
+		),
 	)
 
 

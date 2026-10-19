@@ -182,6 +182,19 @@ function show_retention_status(frm) {
 				text += `&nbsp;·&nbsp; ${__("Held on this invoice")}`;
 			}
 			frm.dashboard.set_headline_alert(text, color);
+			// After an accountant cancelled a transfer, only they can transfer the retention again.
+			if (s.can_retransfer && frappe.user.has_role("Accounts Manager")) {
+				frm.add_custom_button(__("Transfer Retention"), () =>
+					frappe.confirm(__("Transfer the held retention to Retention Receivable again?"), () =>
+						frappe.call({
+							method: "advance_retention_app.customizations.retention.retransfer_retention",
+							args: { invoice: invoice },
+							freeze: true,
+							callback: () => frm.reload_doc(),
+						})
+					)
+				);
+			}
 		},
 	});
 }
