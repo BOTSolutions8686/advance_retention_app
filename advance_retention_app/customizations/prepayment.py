@@ -135,7 +135,9 @@ def on_submit_sales_invoice(doc, method=None):
 			# Prepayments recorded before this correction carry their VAT on the output
 			# account and have no recognition entry, so there is nothing to reverse here.
 			continue
-		vat = advance_vat(pe, advance.allocated_amount)
+		vat = min(advance_vat(pe, advance.allocated_amount), _unsettled_vat(pe, doc.name))
+		if vat <= 0:
+			continue
 		output_vat = _output_vat_account(pe)
 		settled_by_account[output_vat] = flt(settled_by_account.get(output_vat, 0) + vat, 2)
 
@@ -252,8 +254,41 @@ def block_legacy_advance_invoice(doc, method=None):
 
 
 def _uses_clearing(pe):
+	"""True only for a prepayment whose advance VAT this app recognised.
+
+	Requires exactly one VAT row booked as the app books it (Actual, Deduct, clearing
+	account, non-zero amount) and a submitted recognition Journal Entry for this
+	Payment Entry. Anything else (prepayments recorded before 16.1.0, rows with no tax,
+	or other layouts) gets no settlement entry, so only recognised VAT is reversed.
+	"""
 	clearing = get_clearing_account(pe.company)
-	return bool(clearing) and all(row.account_head == clearing for row in pe.get("taxes") or [])
+	taxes = pe.get("taxes") or []
+	if not clearing or len(taxes) != 1:
+		return False
+	row = taxes[0]
+	if (
+		row.account_head != clearing
+		or row.charge_type != "Actual"
+		or row.add_deduct_tax != "Deduct"
+		or not abs(flt(row.tax_amount))
+	):
+		return False
+	return bool(frappe.db.exists("Journal Entry", {SOURCE_FIELD: f"Payment Entry:{pe.name}", "docstatus": 1}))
+
+
+def _unsettled_vat(pe, current_invoice):
+	"""Recognised VAT of a prepayment not yet settled by other submitted invoices."""
+	recognised = flt(abs(flt(pe.total_taxes_and_charges)), 2)
+	settled = 0
+	for allocated in frappe.db.sql(
+		"""select sia.allocated_amount from `tabSales Invoice Advance` sia
+		join `tabSales Invoice` si on si.name = sia.parent
+		where si.docstatus = 1 and si.name != %s and sia.reference_type = 'Payment Entry' and sia.reference_name = %s""",
+		(current_invoice, pe.name),
+		pluck=True,
+	):
+		settled += advance_vat(pe, allocated)
+	return flt(recognised - settled, 2)
 
 
 def _output_vat_account(pe):
