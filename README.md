@@ -159,21 +159,39 @@ Proposed manual control until an automated path exists:
 3. Each month, reconcile *VAT on Advances Clearing* to the VAT inside unallocated prepayments:
    `Σ unallocated_amount × rate / (100 + rate)` over submitted prepayment Payment Entries. Investigate any difference.
 
-## Retentions (16.0.2)
+## Retentions (16.2.0)
 
-Add rows to the **Retentions** table on the Sales Invoice and set **Retention Due Date**. On save the app:
+Retention is a payment-timing holdback. The invoice keeps its full taxable value and VAT, and ZATCA reports the full
+invoice. Once the amount due now is collected, the Sales Invoice becomes **Paid**, and the retention becomes a separate,
+collectable customer receivable.
 
-- totals the rows into **Retention Held (due later)**;
-- keeps the full taxable value, VAT and receivable (no discount, ZATCA allowance or expense);
-- reduces the existing payment-schedule installments by the retained amount and adds a later-dated
-  installment for it, then re-runs ERPNext's own schedule validations;
-- sets **Net Amount Due** (invoice total less allocated advances less retention) and its English words.
+1. Add rows to the **Retentions** table and set **Retention Due Date** (after the invoice due date). The app totals
+   them into *Retention Held (due later)* and sets *Net Amount Due* and its words. The Payment Schedule is ERPNext's own.
+2. When the invoice outstanding falls to the retained amount, the app posts a transfer Journal Entry (linked by
+   *Retention Transfer for Invoice*):
 
-The retention due date must be after the last installment. The invoice **due date stays on the first
-installment**. ERPNext would otherwise move it to the retention date, and the Payment Ledger and receivables report
-by invoice due date would then show the whole invoice as not yet due, hiding the overdue amount. ERPNext's invoice
-status and the receivables report *based on payment terms* use the schedule, and show the current installment and
-the retention separately. Retentions are not supported on returns, POS or opening invoices.
+   | Account | Party | Debit | Credit | Against |
+   |---|---|---|---|---|
+   | Retention Receivable | customer | retention | | (due on the retention due date) |
+   | Debtors | customer | | retention | the Sales Invoice |
+
+   The invoice is then Paid. This runs on Sales Invoice submit (when advances cover the amount due now), on Payment
+   Entry submit, on Journal Entry payments, and every 5 minutes for Payment Reconciliation. If the customer also pays
+   part of the retention on the invoice, only the unpaid part is transferred.
+3. Collect the retention later with a Payment Entry (Receive, paid from Retention Receivable) against the transfer
+   Journal Entry. The **Retention Receivable** report lists each transfer with its invoice, due date, collected and
+   outstanding amounts, and ageing on the retention due date. The standard Accounts Receivable report does not age
+   Journal Entry rows by due date.
+
+Safeguards:
+- At most one automatic transfer per invoice. A cancelled transfer is never recreated automatically.
+- A transfer cannot be cancelled after any of its retention has been collected.
+- An invoice with an active transfer cannot be cancelled or credit-noted until the accountant cancels the transfer.
+- Credit notes do not copy the original invoice's retention.
+- Cancelling a customer payment after the transfer re-opens the amount due now on the invoice, and the transfer stays.
+
+`after_install` and the `setup_retention_receivable` patch create *Retention Receivable* (type Receivable) next to the
+company's default receivable account, and set it on the Company. It must never become the default receivable account.
 
 ## Installation
 
