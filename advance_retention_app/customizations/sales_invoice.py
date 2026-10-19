@@ -89,94 +89,48 @@ RETENTION_ROW_DESCRIPTION = "Retention held - due later"
 
 
 def apply_retention_holdback(doc, method=None):
-	"""Treat Sales Deduction rows as a retention holdback (payment timing), not a discount.
+	"""Retention is a payment-timing holdback, not a discount (owner decision D2).
 
-	The invoice keeps its full taxable value and VAT, and the full amount stays in the
-	customer's receivable. The retained amount becomes a separate, later-dated row in
-	the standard Payment Schedule, and the remaining installments are reduced so the
-	schedule still totals the invoice. ERPNext's own schedule validations are re-run on
-	the result. Advance allocation (``payment_invoices``) is display-only and is not
-	settled here.
+	The invoice keeps its full taxable value, VAT and Payment Schedule. Once the amount
+	due now is collected, ``retention.transfer_retention`` moves the retained amount from
+	the invoice to the Retention Receivable account, so the invoice becomes Paid while the
+	retention stays a separate, collectable customer receivable due on
+	``custom_retention_due_date`` (owner decision, 2026-10-19).
 	"""
-	retention = flt(sum(flt(row.deduction_amount) for row in doc.get("deductions") or []), doc.precision("grand_total"))
-	doc.custom_retention_amount = retention
-
-	if any(flt(row.deduction_amount) < 0 for row in doc.get("deductions") or []):
+	rows = doc.get("deductions") or []
+	if any(flt(row.deduction_amount) < 0 for row in rows):
 		frappe.throw(_("Retention amounts cannot be negative."))
+	retention = flt(sum(flt(row.deduction_amount) for row in rows), doc.precision("grand_total"))
+	doc.custom_retention_amount = retention
 
 	_set_net_amount_due(doc, retention)
 
-	if doc.is_return or doc.is_pos or doc.get("is_opening") == "Yes":
-		if retention:
-			frappe.throw(_("Retention holdback is not supported on returns, POS or opening invoices."))
-		return
-
-	schedule = [row for row in doc.get("payment_schedule") or [] if row.description != RETENTION_ROW_DESCRIPTION]
+	# Earlier versions added a retention row to the Payment Schedule; never keep one.
+	if any(row.description == RETENTION_ROW_DESCRIPTION for row in doc.get("payment_schedule") or []):
+		doc.set("payment_schedule", [])
+		doc.set_payment_schedule()
+		doc.set_due_date()
 
 	if not retention:
-		if len(schedule) != len(doc.get("payment_schedule") or []):
-			doc.set("payment_schedule", [])
-			doc.set_payment_schedule()
-			doc.set_due_date()
 		return
-
+	if doc.is_return or doc.is_pos or doc.get("is_opening") == "Yes":
+		frappe.throw(_("Retention holdback is not supported on returns, POS or opening invoices."))
 	if not doc.custom_retention_due_date:
 		frappe.throw(_("Retention Due Date is required when a retention is held."))
 
-	if not schedule:
-		doc.set("payment_schedule", [])
-		doc.set_payment_schedule()
-		schedule = list(doc.get("payment_schedule"))
-
 	payable = _expected_schedule_total(doc)
-	current = flt(sum(flt(row.payment_amount) for row in schedule)) or payable
 	if retention >= payable:
 		frappe.throw(
 			_("Retention {0} must be less than the amount payable on this invoice ({1}).").format(
 				frappe.format(retention, {"fieldtype": "Currency"}), frappe.format(payable, {"fieldtype": "Currency"})
 			)
 		)
-
-	last_installment_date = max(getdate(row.due_date) for row in schedule)
-	if getdate(doc.custom_retention_due_date) <= last_installment_date:
+	if doc.due_date and getdate(doc.custom_retention_due_date) <= getdate(doc.due_date):
 		frappe.throw(
-			_("Retention Due Date must be after the last payment installment ({0}).").format(
-				frappe.format(last_installment_date, {"fieldtype": "Date"})
+			_("Retention Due Date must be after the invoice due date ({0}).").format(
+				frappe.format(getdate(doc.due_date), {"fieldtype": "Date"})
 			)
 		)
-
-	# Scale the existing installments down to the amount due now; the rounding
-	# difference goes to the last installment so the total stays exact.
-	due_now = flt(payable - retention, doc.precision("grand_total"))
-	conversion_rate = flt(doc.conversion_rate) or 1
-	allocated = 0
-	for idx, row in enumerate(schedule):
-		if idx == len(schedule) - 1:
-			amount = flt(due_now - allocated, row.precision("payment_amount"))
-		else:
-			amount = flt(flt(row.payment_amount) * due_now / current, row.precision("payment_amount"))
-		allocated += amount
-		_set_schedule_amount(row, amount, payable, conversion_rate)
-
-	doc.set("payment_schedule", schedule)
-	retention_row = doc.append(
-		"payment_schedule",
-		{"due_date": doc.custom_retention_due_date, "description": RETENTION_ROW_DESCRIPTION},
-	)
-	_set_schedule_amount(retention_row, retention, payable, conversion_rate)
-
-	# Re-run ERPNext's own checks against the rebuilt schedule.
-	doc.validate_payment_schedule_dates()
-	doc.validate_payment_schedule_amount()
-
-	# ERPNext would set the invoice due date to the last schedule row (the retention date).
-	# The Payment Ledger and the receivables report by invoice due date then show the whole
-	# invoice as not yet due, hiding the overdue current instalment. Keep the invoice due
-	# date on the first instalment; the retention stays a later Payment Schedule row (with
-	# custom_retention_due_date), which ERPNext uses for status and for receivables "based on
-	# payment terms".
-	doc.due_date = min(getdate(row.due_date) for row in doc.payment_schedule)
-	doc.validate_due_date()
 
 
 def _expected_schedule_total(doc):
@@ -189,17 +143,6 @@ def _expected_schedule_total(doc):
 		else:
 			grand_total -= flt(doc.total_advance)
 	return flt(grand_total, doc.precision("grand_total"))
-
-
-def _set_schedule_amount(row, amount, payable, conversion_rate):
-	row.payment_amount = amount
-	row.base_payment_amount = flt(amount * conversion_rate, row.precision("base_payment_amount"))
-	row.outstanding = amount
-	row.base_outstanding = row.base_payment_amount
-	row.paid_amount = 0
-	row.base_paid_amount = 0
-	row.discounted_amount = 0
-	row.invoice_portion = flt(amount * 100 / payable, row.precision("invoice_portion")) if payable else 0
 
 
 def _set_net_amount_due(doc, retention):

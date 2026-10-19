@@ -46,7 +46,9 @@ fixtures = [
                     "Sales Invoice-custom_total_deductions_and_retentions",
                     "Sales Invoice-custom_column_break_vnklc",
                     "Company-custom_advance_vat_clearing_account",
-                    "Journal Entry-custom_bot_advance_vat_source"
+                    "Journal Entry-custom_bot_advance_vat_source",
+                    "Company-custom_retention_receivable_account",
+                    "Journal Entry-custom_bot_retention_invoice"
                 ]
             ]
         ]
@@ -188,15 +190,38 @@ doc_events = {
 			"advance_retention_app.customizations.prepayment.block_legacy_advance_invoice",
 			"advance_retention_app.customizations.prepayment.validate_sales_invoice_scope",
 			"advance_retention_app.customizations.sales_invoice.apply_retention_holdback",
+			"advance_retention_app.customizations.retention.validate_sales_invoice",
 		],
-		"on_submit": "advance_retention_app.customizations.prepayment.on_submit_sales_invoice",
+		"on_submit": [
+			"advance_retention_app.customizations.prepayment.on_submit_sales_invoice",
+			"advance_retention_app.customizations.retention.on_submit_sales_invoice",
+		],
+		"before_cancel": "advance_retention_app.customizations.retention.before_cancel_sales_invoice",
 		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_sales_invoice",
 	},
 	"Payment Entry": {
 		"validate": "advance_retention_app.customizations.prepayment.validate_prepayment_entry",
-		"on_submit": "advance_retention_app.customizations.prepayment.on_submit_prepayment_entry",
+		"on_submit": [
+			"advance_retention_app.customizations.prepayment.on_submit_prepayment_entry",
+			"advance_retention_app.customizations.retention.on_submit_payment_entry",
+		],
 		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_prepayment_entry",
 	},
+	"Journal Entry": {
+		"on_submit": "advance_retention_app.customizations.retention.on_submit_journal_entry",
+		"before_cancel": "advance_retention_app.customizations.retention.before_cancel_journal_entry",
+	},
+}
+
+scheduler_events = {
+	"hourly": ["advance_retention_app.customizations.retention.transfer_due_retentions"],
+}
+
+jinja = {
+	"methods": [
+		"advance_retention_app.customizations.retention.retention_outstanding",
+		"advance_retention_app.customizations.retention.get_transfer",
+	],
 }
 
 # doc_events = {

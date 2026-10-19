@@ -144,6 +144,7 @@ def remove_discount_relabels():
 
 def after_install():
 	setup_advance_vat_clearing_accounts()
+	setup_retention_receivable_accounts()
 
 
 def setup_advance_vat_clearing_accounts():
@@ -191,3 +192,47 @@ def setup_advance_vat_clearing_accounts():
 		frappe.db.set_value("Company", company.name, "custom_advance_vat_clearing_account", account)
 		frappe.clear_document_cache("Company", company.name)
 		print(f"Advance VAT clearing account for {company.name}: {account}")
+
+
+def setup_retention_receivable_accounts():
+	"""Create 'Retention Receivable' (Receivable) next to the company's default receivable account.
+
+	Idempotent. The account is never made the default receivable account.
+	"""
+	if not frappe.get_meta("Company").has_field("custom_retention_receivable_account"):
+		from frappe.utils.fixtures import sync_fixtures
+
+		sync_fixtures("advance_retention_app")
+		frappe.clear_cache(doctype="Company")
+
+	for company in frappe.get_all("Company", fields=["name", "default_receivable_account"]):
+		if frappe.db.get_value("Company", company.name, "custom_retention_receivable_account"):
+			continue
+		account = frappe.db.get_value("Account", {"company": company.name, "account_name": "Retention Receivable"})
+		if not account:
+			parent = None
+			if company.default_receivable_account:
+				parent = frappe.db.get_value("Account", company.default_receivable_account, "parent_account")
+			parent = parent or frappe.db.get_value(
+				"Account", {"company": company.name, "account_name": "Accounts Receivable", "is_group": 1}
+			)
+			if not parent:
+				print(f"No receivable group for {company.name}; set the Retention Receivable Account manually.")
+				continue
+			account = (
+				frappe.get_doc(
+					{
+						"doctype": "Account",
+						"account_name": "Retention Receivable",
+						"parent_account": parent,
+						"company": company.name,
+						"account_type": "Receivable",
+						"is_group": 0,
+					}
+				)
+				.insert(ignore_permissions=True)
+				.name
+			)
+		frappe.db.set_value("Company", company.name, "custom_retention_receivable_account", account)
+		frappe.clear_document_cache("Company", company.name)
+		print(f"Retention receivable account for {company.name}: {account}")

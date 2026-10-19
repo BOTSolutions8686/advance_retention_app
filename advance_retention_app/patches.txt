@@ -7,3 +7,4 @@
 advance_retention_app.patches.remove_legacy_layout
 advance_retention_app.patches.remove_discount_relabels
 advance_retention_app.patches.setup_advance_vat_clearing
+advance_retention_app.patches.setup_retention_receivable
