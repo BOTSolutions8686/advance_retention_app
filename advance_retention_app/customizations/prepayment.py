@@ -34,7 +34,9 @@ SOURCE_FIELD = "custom_bot_advance_vat_source"
 
 
 def get_clearing_account(company):
-	return frappe.get_cached_value("Company", company, "custom_advance_vat_clearing_account")
+	# Read from the database: the field is set by a patch with db.set_value, which does
+	# not invalidate cached Company documents in already-running workers.
+	return frappe.db.get_value("Company", company, "custom_advance_vat_clearing_account")
 
 
 def is_prepayment(pe):

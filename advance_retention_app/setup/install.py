@@ -189,4 +189,5 @@ def setup_advance_vat_clearing_accounts():
 			)
 
 		frappe.db.set_value("Company", company.name, "custom_advance_vat_clearing_account", account)
+		frappe.clear_document_cache("Company", company.name)
 		print(f"Advance VAT clearing account for {company.name}: {account}")
