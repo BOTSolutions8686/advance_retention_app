@@ -299,3 +299,25 @@ def _cancel_journal_entries(source):
 		je = frappe.get_doc("Journal Entry", name)
 		je.flags.ignore_permissions = True
 		je.cancel()
+
+
+@frappe.whitelist()
+def get_prepayment_vat_row(company, template, paid_amount):
+	"""The single VAT row a prepayment invoice needs (used by the Payment Entry form)."""
+	frappe.has_permission("Payment Entry", "create", throw=True)
+	rate = template_vat_rate(template)
+	if rate not in SUPPORTED_VAT_RATES:
+		frappe.throw(_("Template {0} must hold a single VAT rate of 15%.").format(template))
+	clearing = get_clearing_account(company)
+	if not clearing:
+		frappe.throw(_("Set the 'Advance VAT Clearing Account' on Company {0}.").format(company))
+	gross = flt(paid_amount)
+	return {
+		"charge_type": "Actual",
+		"add_deduct_tax": "Deduct",
+		"included_in_paid_amount": 0,
+		"account_head": clearing,
+		"description": _("VAT {0}% included in advance").format(f"{rate:g}"),
+		"rate": rate,
+		"tax_amount": flt(gross - gross / (1 + rate / 100), 2),
+	}
