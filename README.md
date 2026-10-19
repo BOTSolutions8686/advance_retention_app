@@ -122,15 +122,25 @@ Anything else is refused with a message until it has been tested.
 
 ### Using it in the Desk
 
-- Selecting the Sales Taxes and Charges Template on the Payment Entry fills an *On Paid Amount / Add* row
-  for the output VAT account. Replace it with one row: *Actual*, *Deduct*, account *VAT on Advances Clearing*,
-  with the VAT amount included in the amount received.
+- On a Payment Entry with *Prepayment Invoice* ticked, choosing the Sales Taxes and Charges Template (or
+  changing the amount received) replaces the template's default row with the required single row: *Actual*,
+  *Deduct*, account *VAT on Advances Clearing*, VAT included in the amount received.
 - On the Sales Invoice, **Get Advances Received** lists every unallocated advance. That includes prepayments
   recorded before 16.1.0, which have no VAT correction, and the invoice shows a warning when one is allocated.
-- Printed invoices: *BOT Sales Invoice* and *ZATCA Phase 2 Print Format* show the full taxable amount, VAT and gross
-  total. They do **not** show the prepaid amount, the retention or the net amount due. The printed due date is
-  the retention due date, because ERPNext uses the last payment-schedule date. Check the site's own print format
-  before go-live.
+- Printed invoices: the generic *BOT Sales Invoice* and *ZATCA Phase 2 Print Format* show the full taxable amount,
+  VAT and gross total only. They omit the prepaid amount, the retention and the net amount due, and their printed
+  due date is the retention date, because ERPNext uses the last payment-schedule date. Customer-specific print formats that
+  show these (a 388 invoice format and a 386 advance tax invoice for Payment Entry) are delivered separately
+  with each deployment, under new names, so the customer's existing formats are not changed.
+
+### Upgrading from 16.0.0 (`080e6e4`)
+
+`bench migrate` runs `remove_legacy_layout`, `remove_discount_relabels` and `setup_advance_vat_clearing`. Together they
+remove the whole-form Sales Invoice layout override and its tab, the discount relabels and the module-less hidden setter,
+and they create and set the clearing account. Submitted invoices, ledger entries and legacy allocation rows are unchanged.
+The `Deductions And Retentions` account and anything already booked to it are kept for the accountant. **Draft** invoices
+using the retired Advance Invoice type cannot be saved afterwards, so list them before upgrading. Restart web and worker
+processes after `migrate`.
 
 ### Advance refunds and cancellation (not automated)
 
