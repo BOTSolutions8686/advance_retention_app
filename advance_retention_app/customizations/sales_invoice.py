@@ -119,9 +119,10 @@ def apply_retention_holdback(doc, method=None):
 		frappe.throw(_("Retention Due Date is required when a retention is held."))
 
 	payable = _expected_schedule_total(doc)
-	if retention >= payable:
+	if retention > payable:
+		# Equal is allowed: advances may already cover the whole amount due now.
 		frappe.throw(
-			_("Retention {0} must be less than the amount payable on this invoice ({1}).").format(
+			_("Retention {0} cannot exceed the amount payable on this invoice ({1}).").format(
 				frappe.format(retention, {"fieldtype": "Currency"}), frappe.format(payable, {"fieldtype": "Currency"})
 			)
 		)
