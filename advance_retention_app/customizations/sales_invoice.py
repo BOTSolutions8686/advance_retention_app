@@ -167,8 +167,15 @@ def apply_retention_holdback(doc, method=None):
 
 	# Re-run ERPNext's own checks against the rebuilt schedule.
 	doc.validate_payment_schedule_dates()
-	doc.set_due_date()
 	doc.validate_payment_schedule_amount()
+
+	# ERPNext would set the invoice due date to the last schedule row (the retention date).
+	# The Payment Ledger and the receivables report by invoice due date then show the whole
+	# invoice as not yet due, hiding the overdue current instalment. Keep the invoice due
+	# date on the first instalment; the retention stays a later Payment Schedule row (with
+	# custom_retention_due_date), which ERPNext uses for status and for receivables "based on
+	# payment terms".
+	doc.due_date = min(getdate(row.due_date) for row in doc.payment_schedule)
 	doc.validate_due_date()
 
 

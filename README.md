@@ -169,10 +169,11 @@ Add rows to the **Retentions** table on the Sales Invoice and set **Retention Du
   installment for it, then re-runs ERPNext's own schedule validations;
 - sets **Net Amount Due** (invoice total less allocated advances less retention) and its English words.
 
-The retention due date must be after the last installment. With a Payment Terms Template the invoice due
-date moves to the retention date, so ERPNext's credit-days check applies: only users with the
-Accounts Settings *Credit Controller* role can save such an invoice. Retentions are not supported on returns,
-POS or opening invoices.
+The retention due date must be after the last installment. The invoice **due date stays on the first
+installment**. ERPNext would otherwise move it to the retention date, and the Payment Ledger and receivables report
+by invoice due date would then show the whole invoice as not yet due, hiding the overdue amount. ERPNext's invoice
+status and the receivables report *based on payment terms* use the schedule, and show the current installment and
+the retention separately. Retentions are not supported on returns, POS or opening invoices.
 
 ## Installation
 
