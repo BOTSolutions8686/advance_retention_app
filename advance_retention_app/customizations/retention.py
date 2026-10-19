@@ -14,7 +14,12 @@ invoice's receivable account to the company's Retention Receivable account:
 
 The retention is later collected with a Payment Entry against that Journal Entry.
 Each invoice gets at most one automatic transfer: once a transfer exists (submitted or
-cancelled) it is never recreated automatically.
+cancelled) it is never recreated automatically. Concurrent triggers (a payment and the
+scheduler, or two workers) are serialised on the invoice row and re-checked with locking
+reads; a transfer that would duplicate another is refused at submission.
+
+The transfer is dated when the invoice outstanding last changed (the settling payment's
+posting date), so as-of reports move the retention on the day the amount due now was paid.
 """
 
 import frappe
@@ -36,16 +41,41 @@ def get_transfer(invoice, include_cancelled=False):
 	)
 
 
+def _existing_transfer_locked(invoice, exclude=None):
+	"""Any submitted or cancelled transfer, read with a lock so concurrent writers see each other."""
+	rows = frappe.db.sql(
+		"""select name from `tabJournal Entry` where custom_bot_retention_invoice = %s
+		and docstatus in (1, 2) and name != %s limit 1 for update""",
+		(invoice, exclude or ""),
+	)
+	return rows[0][0] if rows else None
+
+
+def _settled_on(invoice, posting_date):
+	"""The date the invoice outstanding last changed, from the Payment Ledger."""
+	last = frappe.db.sql(
+		"""select max(posting_date) from `tabPayment Ledger Entry`
+		where delinked = 0 and against_voucher_type = 'Sales Invoice' and against_voucher_no = %s""",
+		invoice,
+	)[0][0]
+	return max(getdate(posting_date), getdate(last or posting_date))
+
+
 def transfer_retention(invoice):
 	"""Create the transfer when the invoice's outstanding has fallen to the retained amount."""
 	si = frappe.get_doc("Sales Invoice", invoice)
 	retention = flt(si.get("custom_retention_amount"))
 	if si.docstatus != 1 or si.is_return or not retention:
 		return None
-	if get_transfer(invoice, include_cancelled=True):
+
+	# Serialise on the invoice row; the locking reads below see other committed transfers.
+	locked = frappe.db.sql(
+		"select outstanding_amount from `tabSales Invoice` where name = %s for update", invoice
+	)
+	if _existing_transfer_locked(invoice):
 		return None
 
-	outstanding = flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount"))
+	outstanding = flt(locked[0][0])
 	if outstanding > retention + TOLERANCE or outstanding <= TOLERANCE:
 		# The amount due now is not yet collected, or the invoice is already settled.
 		return None
@@ -60,7 +90,7 @@ def transfer_retention(invoice):
 			"doctype": "Journal Entry",
 			"voucher_type": "Journal Entry",
 			"company": si.company,
-			"posting_date": max(getdate(si.posting_date), getdate(nowdate())),
+			"posting_date": _settled_on(invoice, si.posting_date),
 			"due_date": si.custom_retention_due_date,
 			"user_remark": _("Retention held on {0}, due {1}, transferred to Retention Receivable").format(
 				si.name, frappe.format(si.custom_retention_due_date, {"fieldtype": "Date"})
@@ -132,6 +162,16 @@ def transfer_due_retentions():
 # Guards
 
 
+def before_submit_journal_entry(doc, method=None):
+	invoice = doc.get(TRANSFER_FIELD)
+	if not invoice:
+		return
+	frappe.db.sql("select name from `tabSales Invoice` where name = %s for update", invoice)
+	other = _existing_transfer_locked(invoice, exclude=doc.name)
+	if other:
+		frappe.throw(_("Invoice {0} already has a retention transfer ({1}).").format(invoice, other))
+
+
 def before_cancel_journal_entry(doc, method=None):
 	if not doc.get(TRANSFER_FIELD):
 		return
@@ -166,17 +206,76 @@ def before_cancel_sales_invoice(doc, method=None):
 		frappe.throw(_("Cancel the retention transfer {0} before cancelling this invoice.").format(transfer))
 
 
-def retention_outstanding(invoice):
-	"""Retention not yet collected, for print formats: transferred balance, or the held amount before transfer."""
-	retention = flt(frappe.db.get_value("Sales Invoice", invoice, "custom_retention_amount"))
-	transfer = get_transfer(invoice)
-	if not transfer:
-		return retention
-	account = frappe.db.get_value("Journal Entry Account", {"parent": transfer, "debit_in_account_currency": [">", 0]}, "account")
+def _ledger_outstanding(voucher_type, voucher_no, account, as_of=None):
+	conditions, values = "", [account, voucher_type, voucher_no]
+	if as_of:
+		conditions, values = " and posting_date <= %s", values + [getdate(as_of)]
 	return flt(
 		frappe.db.sql(
-			"""select ifnull(sum(amount), 0) from `tabPayment Ledger Entry`
-			where delinked = 0 and account = %s and against_voucher_type = 'Journal Entry' and against_voucher_no = %s""",
-			(account, transfer),
+			f"""select ifnull(sum(amount), 0) from `tabPayment Ledger Entry`
+			where delinked = 0 and account = %s and against_voucher_type = %s and against_voucher_no = %s{conditions}""",
+			values,
 		)[0][0]
 	)
+
+
+def retention_status(invoice, as_of=None):
+	"""Retention state of a submitted invoice, derived from the Payment Ledger.
+
+	Before transfer the retention is the part of the invoice outstanding up to the retained
+	amount; after transfer it is the outstanding of the transfer Journal Entry. The native
+	invoice status is not touched.
+	"""
+	si = frappe.db.get_value(
+		"Sales Invoice",
+		invoice,
+		["docstatus", "debit_to", "custom_retention_amount", "custom_retention_due_date", "currency"],
+		as_dict=True,
+	)
+	retention = flt(si and si.custom_retention_amount)
+	if not si or si.docstatus != 1 or not retention:
+		return None
+
+	transfer = get_transfer(invoice)
+	if transfer and as_of and getdate(frappe.db.get_value("Journal Entry", transfer, "posting_date")) > getdate(as_of):
+		transfer = None
+	if transfer:
+		row = frappe.db.get_value(
+			"Journal Entry Account",
+			{"parent": transfer, "debit_in_account_currency": [">", 0]},
+			["account", "debit_in_account_currency"],
+			as_dict=True,
+		)
+		outstanding = _ledger_outstanding("Journal Entry", transfer, row.account, as_of)
+	else:
+		outstanding = min(retention, max(_ledger_outstanding("Sales Invoice", invoice, si.debit_to, as_of), 0))
+
+	if outstanding <= TOLERANCE:
+		status = "Paid"
+	elif outstanding >= retention - TOLERANCE:
+		status = "Unpaid"
+	else:
+		status = "Partly Paid"
+	due = si.custom_retention_due_date
+	return frappe._dict(
+		status=status,
+		retention=retention,
+		outstanding=outstanding,
+		collected=retention - outstanding,
+		due_date=due,
+		overdue=bool(outstanding > TOLERANCE and due and getdate(due) < getdate(as_of or nowdate())),
+		transfer=transfer,
+		currency=si.currency,
+	)
+
+
+@frappe.whitelist()
+def get_retention_status(invoice):
+	frappe.has_permission("Sales Invoice", "read", invoice, throw=True)
+	return retention_status(invoice)
+
+
+def retention_outstanding(invoice):
+	"""Retention not yet collected, for print formats."""
+	state = retention_status(invoice)
+	return state.outstanding if state else flt(frappe.db.get_value("Sales Invoice", invoice, "custom_retention_amount"))

@@ -4,6 +4,7 @@ frappe.ui.form.on("Sales Invoice", {
 	// table. The old section is only shown on historical invoices that used it.
 	refresh: function (frm) {
 		toggle_legacy_advance_section(frm);
+		show_retention_status(frm);
 	},
 	onload: function (frm) {
 		toggle_legacy_advance_section(frm);
@@ -155,4 +156,32 @@ frappe.ui.form.on("Advance Payments", {
 
 function toggle_legacy_advance_section(frm) {
 	frm.toggle_display("advance_invoices_section", (frm.doc.payment_invoices || []).length > 0);
+}
+
+// Retention has its own state, shown beside ERPNext's invoice status (which is never
+// changed): Unpaid / Partly Paid / Paid, derived on the server from the Payment Ledger.
+const RETENTION_COLORS = { Unpaid: "orange", "Partly Paid": "yellow", Paid: "green" };
+
+function show_retention_status(frm) {
+	if (frm.doc.docstatus !== 1 || !flt(frm.doc.custom_retention_amount)) return;
+	const invoice = frm.doc.name;
+	frappe.call({
+		method: "advance_retention_app.customizations.retention.get_retention_status",
+		args: { invoice: invoice },
+		callback: function (r) {
+			const s = r.message;
+			if (!s || frm.doc.name !== invoice) return;
+			const money = (v) => format_currency(v, s.currency);
+			const color = s.overdue ? "red" : RETENTION_COLORS[s.status];
+			let text = `<span class="indicator-pill ${color}">${__("Retention")}: ${__(s.status)}${s.overdue ? " · " + __("Overdue") : ""}</span>
+				&nbsp; ${__("Outstanding {0} of {1}", [money(s.outstanding), money(s.retention)])}
+				&nbsp;·&nbsp; ${__("Due {0}", [frappe.datetime.str_to_user(s.due_date)])}`;
+			if (s.transfer) {
+				text += `&nbsp;·&nbsp; ${__("Collect against")} <a href="/desk/journal-entry/${encodeURIComponent(s.transfer)}">${s.transfer}</a>`;
+			} else if (s.outstanding) {
+				text += `&nbsp;·&nbsp; ${__("Held on this invoice")}`;
+			}
+			frm.dashboard.set_headline_alert(text, color);
+		},
+	});
 }

@@ -208,6 +208,7 @@ doc_events = {
 		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_prepayment_entry",
 	},
 	"Journal Entry": {
+		"before_submit": "advance_retention_app.customizations.retention.before_submit_journal_entry",
 		"on_submit": "advance_retention_app.customizations.retention.on_submit_journal_entry",
 		"before_cancel": "advance_retention_app.customizations.retention.before_cancel_journal_entry",
 	},
@@ -224,6 +225,7 @@ jinja = {
 	"methods": [
 		"advance_retention_app.customizations.retention.retention_outstanding",
 		"advance_retention_app.customizations.retention.get_transfer",
+		"advance_retention_app.customizations.retention.retention_status",
 	],
 }
 
