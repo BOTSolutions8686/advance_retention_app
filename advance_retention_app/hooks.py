@@ -200,7 +200,10 @@ doc_events = {
 		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_sales_invoice",
 	},
 	"Payment Entry": {
-		"validate": "advance_retention_app.customizations.prepayment.validate_prepayment_entry",
+		"validate": [
+			"advance_retention_app.customizations.prepayment.validate_prepayment_entry",
+			"advance_retention_app.customizations.retention.validate_payment_entry",
+		],
 		"on_submit": [
 			"advance_retention_app.customizations.prepayment.on_submit_prepayment_entry",
 			"advance_retention_app.customizations.retention.on_submit_payment_entry",
@@ -208,6 +211,7 @@ doc_events = {
 		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_prepayment_entry",
 	},
 	"Journal Entry": {
+		"validate": "advance_retention_app.customizations.retention.validate_journal_entry",
 		"before_submit": "advance_retention_app.customizations.retention.before_submit_journal_entry",
 		"on_submit": "advance_retention_app.customizations.retention.on_submit_journal_entry",
 		"before_cancel": "advance_retention_app.customizations.retention.before_cancel_journal_entry",

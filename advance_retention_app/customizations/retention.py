@@ -230,6 +230,32 @@ def before_submit_journal_entry(doc, method=None):
 		frappe.throw(_("Invoice {0} already has a retention transfer ({1}).").format(invoice, other))
 
 
+def _refuse_collection_before_transfer(posting_date, journal_entries):
+	for name in set(journal_entries):
+		transfer = frappe.db.get_value("Journal Entry", name, [TRANSFER_FIELD, "posting_date"], as_dict=True)
+		if transfer and transfer.get(TRANSFER_FIELD) and getdate(posting_date) < getdate(transfer.posting_date):
+			frappe.throw(
+				_("A retention collection cannot be dated before its transfer {0} ({1}).").format(
+					name, frappe.format(transfer.posting_date, {"fieldtype": "Date"})
+				)
+			)
+
+
+def validate_payment_entry(doc, method=None):
+	_refuse_collection_before_transfer(
+		doc.posting_date, [r.reference_name for r in doc.get("references") or [] if r.reference_doctype == "Journal Entry"]
+	)
+
+
+def validate_journal_entry(doc, method=None):
+	if doc.get(TRANSFER_FIELD):
+		return
+	_refuse_collection_before_transfer(
+		doc.posting_date,
+		[r.reference_name for r in doc.get("accounts") or [] if r.reference_type == "Journal Entry" and r.reference_name],
+	)
+
+
 def before_cancel_journal_entry(doc, method=None):
 	if not doc.get(TRANSFER_FIELD):
 		return
@@ -308,8 +334,9 @@ def retention_status(invoice, as_of=None):
 	else:
 		outstanding = min(retention, max(_ledger_outstanding("Sales Invoice", invoice, si.debit_to, as_of), 0))
 
-	adjustments = [] if transfer else non_cash_reductions(invoice, as_of)
-	if adjustments:
+	# Credit notes and non-cash adjustments stay visible after a transfer; they hold only before it.
+	adjustments = non_cash_reductions(invoice, as_of)
+	if adjustments and not transfer:
 		# Not collected: an accountant decides whether the retention is still owed.
 		status = "On Hold" if outstanding > TOLERANCE else "Credited"
 	elif outstanding <= TOLERANCE:
@@ -323,11 +350,11 @@ def retention_status(invoice, as_of=None):
 		status=status,
 		retention=retention,
 		outstanding=outstanding,
-		collected=0 if adjustments else retention - outstanding,
+		collected=0 if adjustments and not transfer else retention - outstanding,
 		adjustments=adjustments,
 		credited=sum(a.amount for a in adjustments),
 		due_date=due,
-		overdue=bool(not adjustments and outstanding > TOLERANCE and due and getdate(due) < getdate(as_of or nowdate())),
+		overdue=bool(not (adjustments and not transfer) and outstanding > TOLERANCE and due and getdate(due) < getdate(as_of or nowdate())),
 		transfer=transfer,
 		currency=si.currency,
 		can_retransfer=bool(
