@@ -197,7 +197,15 @@ collections posted on or before it. Retention still held on an invoice (not yet 
 Receivable report, so the report total always equals the Retention Receivable account balance. Cancelled documents
 are excluded for every date, as in ERPNext's own reports.
 
+**Only customer payments collect the amount due now.** Payment Entries (including allocated prepayments) and Journal
+Entries through a Bank or Cash account count. A credit note (against the invoice, or reconciled to it) or a non-cash
+Journal Entry such as a write-off does not: if it reduces the outstanding, the retention shows **On Hold** (or
+**Credited** when nothing remains) and is never transferred automatically, because whether the retention is still owed
+is a commercial decision. An Accounts Manager decides: **Transfer Retention** if it is still owed, otherwise credit it.
+The print lists credited amounts separately and never shows them as paid.
+
 Safeguards:
+- A retention collection cannot be dated before its transfer.
 - At most one transfer per invoice. Concurrent triggers are serialised on the invoice row and re-checked with locking
   reads, and a second active transfer is refused at Journal Entry submission.
 - A cancelled transfer is never recreated automatically; an Accounts Manager can use **Transfer Retention** on the
