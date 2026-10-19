@@ -214,7 +214,10 @@ doc_events = {
 }
 
 scheduler_events = {
-	"hourly": ["advance_retention_app.customizations.retention.transfer_due_retentions"],
+	# Payment Reconciliation does not fire document hooks; settle those within minutes.
+	"cron": {
+		"*/5 * * * *": ["advance_retention_app.customizations.retention.transfer_due_retentions"],
+	},
 }
 
 jinja = {

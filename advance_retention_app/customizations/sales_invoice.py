@@ -97,6 +97,12 @@ def apply_retention_holdback(doc, method=None):
 	retention stays a separate, collectable customer receivable due on
 	``custom_retention_due_date`` (owner decision, 2026-10-19).
 	"""
+	if doc.is_return and (doc.get("deductions") or doc.get("custom_retention_amount")):
+		# A credit note does not carry the original invoice's retention (copied by make_sales_return).
+		doc.set("deductions", [])
+		doc.custom_retention_amount = 0
+		doc.custom_retention_due_date = None
+
 	rows = doc.get("deductions") or []
 	if any(flt(row.deduction_amount) < 0 for row in rows):
 		frappe.throw(_("Retention amounts cannot be negative."))
