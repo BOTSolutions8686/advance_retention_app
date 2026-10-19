@@ -160,7 +160,7 @@ function toggle_legacy_advance_section(frm) {
 
 // Retention has its own state, shown beside ERPNext's invoice status (which is never
 // changed): Unpaid / Partly Paid / Paid, derived on the server from the Payment Ledger.
-const RETENTION_COLORS = { Unpaid: "orange", "Partly Paid": "yellow", Paid: "green" };
+const RETENTION_COLORS = { Unpaid: "orange", "Partly Paid": "yellow", Paid: "green", "On Hold": "blue", Credited: "gray" };
 
 function show_retention_status(frm) {
 	if (frm.doc.docstatus !== 1 || !flt(frm.doc.custom_retention_amount)) return;
@@ -178,6 +178,9 @@ function show_retention_status(frm) {
 				&nbsp;·&nbsp; ${__("Due {0}", [frappe.datetime.str_to_user(s.due_date)])}`;
 			if (s.transfer) {
 				text += `&nbsp;·&nbsp; ${__("Collect against")} <a href="/desk/journal-entry/${encodeURIComponent(s.transfer)}">${s.transfer}</a>`;
+			} else if (s.adjustments && s.adjustments.length) {
+				const refs = s.adjustments.map((a) => `${a.voucher_no} (${money(a.amount)})`).join(", ");
+				text += `&nbsp;·&nbsp; ${__("Reduced by credit note or adjustment {0}, not by payment: an accountant decides whether the retention is still owed", [refs])}`;
 			} else if (s.outstanding) {
 				text += `&nbsp;·&nbsp; ${__("Held on this invoice")}`;
 			}

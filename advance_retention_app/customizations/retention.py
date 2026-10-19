@@ -20,6 +20,12 @@ reads; a transfer that would duplicate another is refused at submission.
 
 The transfer is dated when the invoice outstanding last changed (the settling payment's
 posting date), so as-of reports move the retention on the day the amount due now was paid.
+
+Only customer settlements collect the amount due now: Payment Entries (including allocated
+prepayments) and Journal Entries through a Bank or Cash account. A credit note, write-off or
+other non-cash adjustment changes what the customer owes, and whether the retention is still
+owed is a commercial decision; such invoices are put On Hold and are never transferred
+automatically. An Accounts Manager decides (retransfer_retention).
 """
 
 import frappe
@@ -61,11 +67,46 @@ def _settled_on(invoice, posting_date):
 	return max(getdate(posting_date), getdate(last or posting_date))
 
 
-def transfer_retention(invoice, after_cancelled=False):
+def non_cash_reductions(invoice, as_of=None):
+	"""Vouchers other than customer settlements that reduced the invoice outstanding, with the amount."""
+	conditions, values = "", [invoice, invoice]
+	if as_of:
+		conditions, values = " and posting_date <= %s", values + [getdate(as_of)]
+	rows = frappe.db.sql(
+		f"""select voucher_type, voucher_no, sum(amount) as amount from `tabPayment Ledger Entry`
+		where delinked = 0 and against_voucher_type = 'Sales Invoice' and against_voucher_no = %s
+		and voucher_no != %s{conditions} group by voucher_type, voucher_no""",
+		values,
+		as_dict=True,
+	)
+	found = []
+	for row in rows:
+		if row.voucher_type == "Payment Entry" or flt(row.amount) >= 0:
+			continue
+		if row.voucher_type == "Journal Entry" and (
+			frappe.db.get_value("Journal Entry", row.voucher_no, TRANSFER_FIELD) or _through_bank_or_cash(row.voucher_no)
+		):
+			continue
+		found.append(frappe._dict(voucher_type=row.voucher_type, voucher_no=row.voucher_no, amount=-flt(row.amount)))
+	return found
+
+
+def _through_bank_or_cash(journal_entry):
+	return bool(
+		frappe.db.sql(
+			"""select 1 from `tabJournal Entry Account` jea join `tabAccount` a on a.name = jea.account
+			where jea.parent = %s and a.account_type in ('Bank', 'Cash') limit 1""",
+			journal_entry,
+		)
+	)
+
+
+def transfer_retention(invoice, manual=False):
 	"""Create the transfer when the invoice's outstanding has fallen to the retained amount.
 
-	Automatic triggers never recreate a cancelled transfer; an Accounts Manager can
-	(retransfer_retention).
+	Automatic triggers never recreate a cancelled transfer and never transfer an invoice whose
+	outstanding was reduced by a credit note or other non-cash adjustment; an Accounts Manager
+	can (retransfer_retention).
 	"""
 	si = frappe.get_doc("Sales Invoice", invoice)
 	retention = flt(si.get("custom_retention_amount"))
@@ -76,7 +117,9 @@ def transfer_retention(invoice, after_cancelled=False):
 	locked = frappe.db.sql(
 		"select outstanding_amount from `tabSales Invoice` where name = %s for update", invoice
 	)
-	if _existing_transfer_locked(invoice, include_cancelled=not after_cancelled):
+	if _existing_transfer_locked(invoice, include_cancelled=not manual):
+		return None
+	if not manual and non_cash_reductions(invoice):
 		return None
 
 	outstanding = flt(locked[0][0])
@@ -126,10 +169,10 @@ def transfer_retention(invoice, after_cancelled=False):
 
 @frappe.whitelist()
 def retransfer_retention(invoice):
-	"""Accountant's decision after cancelling a transfer: transfer the held retention again."""
+	"""Accountant's decision for a held retention (after a cancelled transfer or a credit note)."""
 	frappe.only_for("Accounts Manager")
 	frappe.has_permission("Sales Invoice", "read", invoice, throw=True)
-	name = transfer_retention(invoice, after_cancelled=True)
+	name = transfer_retention(invoice, manual=True)
 	if not name:
 		frappe.throw(_("Nothing to transfer: the invoice has an active transfer, or its amount due now is not yet collected."))
 	return name
@@ -265,7 +308,11 @@ def retention_status(invoice, as_of=None):
 	else:
 		outstanding = min(retention, max(_ledger_outstanding("Sales Invoice", invoice, si.debit_to, as_of), 0))
 
-	if outstanding <= TOLERANCE:
+	adjustments = [] if transfer else non_cash_reductions(invoice, as_of)
+	if adjustments:
+		# Not collected: an accountant decides whether the retention is still owed.
+		status = "On Hold" if outstanding > TOLERANCE else "Credited"
+	elif outstanding <= TOLERANCE:
 		status = "Paid"
 	elif outstanding >= retention - TOLERANCE:
 		status = "Unpaid"
@@ -276,9 +323,11 @@ def retention_status(invoice, as_of=None):
 		status=status,
 		retention=retention,
 		outstanding=outstanding,
-		collected=retention - outstanding,
+		collected=0 if adjustments else retention - outstanding,
+		adjustments=adjustments,
+		credited=sum(a.amount for a in adjustments),
 		due_date=due,
-		overdue=bool(outstanding > TOLERANCE and due and getdate(due) < getdate(as_of or nowdate())),
+		overdue=bool(not adjustments and outstanding > TOLERANCE and due and getdate(due) < getdate(as_of or nowdate())),
 		transfer=transfer,
 		currency=si.currency,
 		can_retransfer=bool(
@@ -286,7 +335,7 @@ def retention_status(invoice, as_of=None):
 			and not transfer
 			and outstanding > TOLERANCE
 			and flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) <= retention + TOLERANCE
-			and get_transfer(invoice, include_cancelled=True)
+			and (adjustments or get_transfer(invoice, include_cancelled=True))
 		),
 	)
 
