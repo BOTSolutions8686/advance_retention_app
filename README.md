@@ -183,8 +183,25 @@ collectable customer receivable.
    outstanding amounts, and ageing on the retention due date. The standard Accounts Receivable report does not age
    Journal Entry rows by due date.
 
+The transfer is dated when the invoice outstanding last changed (the settling payment's posting date), so as-of
+reports move the retention on the day the amount due now was paid, even for back-dated payments.
+
+**Retention status on the Sales Invoice.** Next to ERPNext's own invoice status (which the app never changes), a
+submitted invoice with retention shows *Retention: Unpaid / Partly Paid / Paid* (and *Overdue* after the retention due
+date), the outstanding retention, the due date, and either "Held on this invoice" or the transfer to collect against.
+It is derived from the Payment Ledger each time: before transfer, the part of the invoice outstanding up to the
+retained amount; after transfer, the transfer's outstanding. Print formats can use `retention_status(invoice)`.
+
+**Retention Receivable report, as of a date.** It lists transfers posted on or before the report date, with
+collections posted on or before it. Retention still held on an invoice (not yet transferred) is in the Accounts
+Receivable report, so the report total always equals the Retention Receivable account balance. Cancelled documents
+are excluded for every date, as in ERPNext's own reports.
+
 Safeguards:
-- At most one automatic transfer per invoice. A cancelled transfer is never recreated automatically.
+- At most one transfer per invoice. Concurrent triggers are serialised on the invoice row and re-checked with locking
+  reads, and a second active transfer is refused at Journal Entry submission.
+- A cancelled transfer is never recreated automatically; an Accounts Manager can use **Transfer Retention** on the
+  invoice to transfer it again.
 - A transfer cannot be cancelled after any of its retention has been collected.
 - An invoice with an active transfer cannot be cancelled or credit-noted until the accountant cancels the transfer.
 - Credit notes do not copy the original invoice's retention.
