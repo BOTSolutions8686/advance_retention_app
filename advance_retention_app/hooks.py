@@ -1,14 +1,16 @@
 app_name = "advance_retention_app"
 app_title = "Advance Retention App"
 app_publisher = "khayam khan"
-app_description = "A custom Frappe Application that will introduce Advance Invoice payment and deduction in sales invoice"
+app_description = "A custom Frappe Application that introduces Advance Invoice payment and deduction in Sales Invoice (Frappe v16 compatible)"
 app_email = "khayamkhan852@gmail.com"
 app_license = "mit"
 
 # Apps
 # ------------------
 
-# required_apps = []
+# ERPNext supplies the Sales Invoice doctype this app customises, so it must be
+# installed first. Frappe resolves this automatically for `bench install-app`.
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -37,28 +39,16 @@ fixtures = [
                     "Sales Invoice-custom_net_invoice_for_the_period_total",
                     "Sales Invoice-custom_in_words_english",
                     "Sales Invoice-custom_in_words_arabic",
-                    "deductions_and_retentions_tab_break",
                     "Sales Invoice-custom_retentions_and_retentions",
                     "Sales Invoice-custom_retentions_and_deductions_table",
+                    "Sales Invoice-custom_retention_amount",
+                    "Sales Invoice-custom_retention_due_date",
                     "Sales Invoice-custom_total_deductions_and_retentions",
-                    "Sales Invoice-custom_column_break_vnklc"
-                ]
-            ]
-        ]
-    },
-    {
-        "dt": "Property Setter", "filters": [
-            [
-                "name", "in", [
-                    "Sales Invoice-discount_amount-Label",
-                    "Sales Invoice-apply_discount_on-label",
-                    "Sales Invoice-base_discount_amount-label",
-                    "Sales Invoice-base_discount_amount-hidden",
-                    "Sales Invoice-additional_discount_account-label",
-                    "Sales Invoice-additional_discount_percentage-label",
-                    "Sales Invoice-additional_discount_percentage-read_only",
-                    "Sales Invoice-additional_discount_percentage-hidden",
-                    "Sales Invoice-main-field_order",
+                    "Sales Invoice-custom_column_break_vnklc",
+                    "Company-custom_advance_vat_clearing_account",
+                    "Journal Entry-custom_bot_advance_vat_source",
+                    "Company-custom_retention_receivable_account",
+                    "Journal Entry-custom_bot_retention_invoice"
                 ]
             ]
         ]
@@ -98,7 +88,8 @@ fixtures = [
 
 # include js in doctype views
 doctype_js = {
-    "Sales Invoice" : "public/js/sales_invoice_custom.js"
+    "Sales Invoice" : "public/js/sales_invoice_custom.js",
+    "Payment Entry": "public/js/payment_entry_prepayment.js",
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -138,13 +129,13 @@ doctype_js = {
 # Installation
 # ------------
 
-# before_install = "advance_retention_app.install.before_install"
+before_install = "advance_retention_app.setup.install.before_install"
 after_install = "advance_retention_app.setup.install.after_install"
 
 # Uninstallation
 # ------------
 
-# before_uninstall = "advance_retention_app.uninstall.before_uninstall"
+before_uninstall = "advance_retention_app.setup.install.before_uninstall"
 # after_uninstall = "advance_retention_app.uninstall.after_uninstall"
 
 # Integration Setup
@@ -192,6 +183,55 @@ after_install = "advance_retention_app.setup.install.after_install"
 # Document Events
 # ---------------
 # Hook on document methods and events
+
+doc_events = {
+	"Sales Invoice": {
+		"validate": [
+			"advance_retention_app.customizations.prepayment.block_legacy_advance_invoice",
+			"advance_retention_app.customizations.prepayment.validate_sales_invoice_scope",
+			"advance_retention_app.customizations.sales_invoice.apply_retention_holdback",
+			"advance_retention_app.customizations.retention.validate_sales_invoice",
+		],
+		"on_submit": [
+			"advance_retention_app.customizations.prepayment.on_submit_sales_invoice",
+			"advance_retention_app.customizations.retention.on_submit_sales_invoice",
+		],
+		"before_cancel": "advance_retention_app.customizations.retention.before_cancel_sales_invoice",
+		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_sales_invoice",
+	},
+	"Payment Entry": {
+		"validate": [
+			"advance_retention_app.customizations.prepayment.validate_prepayment_entry",
+			"advance_retention_app.customizations.retention.validate_payment_entry",
+		],
+		"on_submit": [
+			"advance_retention_app.customizations.prepayment.on_submit_prepayment_entry",
+			"advance_retention_app.customizations.retention.on_submit_payment_entry",
+		],
+		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_prepayment_entry",
+	},
+	"Journal Entry": {
+		"validate": "advance_retention_app.customizations.retention.validate_journal_entry",
+		"before_submit": "advance_retention_app.customizations.retention.before_submit_journal_entry",
+		"on_submit": "advance_retention_app.customizations.retention.on_submit_journal_entry",
+		"before_cancel": "advance_retention_app.customizations.retention.before_cancel_journal_entry",
+	},
+}
+
+scheduler_events = {
+	# Payment Reconciliation does not fire document hooks; settle those within minutes.
+	"cron": {
+		"*/5 * * * *": ["advance_retention_app.customizations.retention.transfer_due_retentions"],
+	},
+}
+
+jinja = {
+	"methods": [
+		"advance_retention_app.customizations.retention.retention_outstanding",
+		"advance_retention_app.customizations.retention.get_transfer",
+		"advance_retention_app.customizations.retention.retention_status",
+	],
+}
 
 # doc_events = {
 # 	"*": {
@@ -277,6 +317,7 @@ after_install = "advance_retention_app.setup.install.after_install"
 # 	},
 # 	{
 # 		"doctype": "{doctype_3}",
+# 		"filter_by": "{filter_by}",
 # 		"strict": False,
 # 	},
 # 	{
@@ -297,4 +338,3 @@ after_install = "advance_retention_app.setup.install.after_install"
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
-
