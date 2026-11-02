@@ -1,6 +1,6 @@
 # MBL settlement candidate — local only
 
-This extends the simplified `advance_retention_app` deployed to CCND at 16.2.2 / 3ab7a73. It does not introduce the contract-led `contracting_invoicing` application. Candidate: 16.3.0, branch `codex/bot0222-mbl-operations`.
+This extends the simplified `advance_retention_app` deployed to CCND at 16.2.2 / 3ab7a73. It does not introduce the contract-led `contracting_invoicing` application. Candidate: 16.3.1, branch `codex/bot0222-mbl-operations`.
 
 ## Operations
 
@@ -31,9 +31,9 @@ Use the fixture's **Disable Rounded Total** setting to reproduce MBL's two-decim
 
 ## Evidence and limits
 
-Tests use synthetic data in an isolated Docker instance. Backend/DB/Redis have no external network route; the loopback-only web proxy exposes the UI at http://127.0.0.1:18222. Scheduler and outbound workers are not running. Nothing is sent to ZATCA, MBL or a production site.
+Tests use synthetic data in an isolated Docker instance. Backend/DB/Redis have no external network route; the loopback-only web proxy exposes the UI at http://127.0.0.1:18222. Scheduler and outbound workers are not running. Synthetic documents were submitted to the fixed ZATCA developer-portal sandbox endpoint using a host-side HTTPS transport over private process pipes. The backend still has no external network route. Nothing was sent to MBL or a production endpoint.
 
-Tested baseline: Frappe 16.51.1, ERPNext 16.50.0, `ksa_compliance` 0.61.11 and CLI 2.10.0. Local XSD, EN, KSA and PIH validation is not production clearance. CCND's deployed `ksa_compliance` revision differs and needs a compatibility rehearsal before a release is proposed.
+Tested baseline: Frappe 16.51.1, ERPNext 16.50.0, `ksa_compliance` 0.61.11 and CLI 2.10.0. Local XSD, EN, KSA and PIH validation was followed by actual sandbox compliance and clearance. Sandbox clearance is not production clearance. CCND's deployed `ksa_compliance` revision differs and needs a compatibility rehearsal before a release is proposed.
 
 The app overrides the SIAF controller only to adapt its output model before signing. Its prepare/sign/validate/counter method is based on the tested upstream version; a `ksa_compliance` upgrade requires review of that adapter. The third-party checkout is not patched.
 
@@ -45,3 +45,15 @@ A production release, live refunds, government deferred-tax accounting, historic
 - ZATCA Detailed E-Invoicing Guidelines v2 (May 2023), §8 advances: https://www.zatca.gov.sa/en/E-Invoicing/Introduction/Guidelines/Documents/E-Invoicing_Detailed__Guideline.pdf
 - ZATCA Real Estate VAT Guideline, §6.3 retention: https://zatca.gov.sa/en/RulesRegulations/VAT/Documents/VAT%20%20Real%20Guidelines%20English%20Web.pdf
 - ZATCA government-contract VAT timing guidance: https://zatca.gov.sa/en/MediaCenter/News/Pages/New-VAT-Mechanism-for-Gov.aspx
+
+## Online sandbox verification — 2 November 2026
+
+The developer-portal sandbox issued a compliance CSID and then its test operational CSID (the endpoint is named production/csids but remains under developer-portal). Eleven synthetic documents passed online compliance. The initial missing seller-identification warning was fixed by configuring a synthetic CRN in the lab.
+
+A fresh final set was submitted through the actual app submit_to_zatca workflow. The only replaced layer was HTTP transport: a private pipe forwarded requests to a host process with a hardcoded sandbox endpoint and fixture UUID/content whitelist. No network listener or general backend internet access was added.
+
+All 11 final documents returned HTTP 200, clearanceStatus CLEARED, validationResults PASS, zero warnings and zero errors. The app stores the returned XML and QR, retains the exact submitted XML separately, and records the genuine response in ZATCA Integration Log. Every submitted business element is compared with the returned document, allowing replacement only of signatures/stamp and QR. Tests reject returned amount tampering with the same UUID. App report and print expose the actual environment and returned-clearance verification status.
+
+The set covers four 386 prepayments; MBL98/99/65 invoices; a full credit; partial and remainder credits; and the separate payment/retention lifecycle invoice. Returned QR tag 4 matches XML PayableAmount and tag 5 matches full TaxAmount in every case. MBL98 remains SAR 21,160,000.00 due after retention despite its cleared QR amount SAR 23,805,000.00. The requested cash settlement is displayed separately and does not overwrite the authority's QR.
+
+Task evidence: evidence/sandbox/verification.json, native-app-summary.json, native-app-final-run.log, native-clearance/*.json and inputs/*.xml. Credentials are held only in the private user cache and local encrypted password store, never in source or evidence. No government deferred-tax policy or ZATCA reporting-screen retention column was established by these clearance responses.

@@ -48,4 +48,29 @@ def execute():
     for field in fields:
         field["module"] = "Advance Retention App"
     create_custom_fields({"Sales Invoice": fields}, update=True)
+    create_custom_fields(
+        {
+            "Sales Invoice Additional Fields": [
+                dict(
+                    fieldname="custom_bot_submitted_xml",
+                    label="Original Submitted XML",
+                    fieldtype="Long Text",
+                    ignore_xss_filter=1,
+                    read_only=1,
+                    hidden=1,
+                    no_copy=1,
+                    module="Advance Retention App",
+                ),
+                dict(
+                    fieldname="custom_bot_clearance_verified",
+                    label="Returned Clearance Verified",
+                    fieldtype="Check",
+                    read_only=1,
+                    no_copy=1,
+                    module="Advance Retention App",
+                ),
+            ]
+        },
+        update=True,
+    )
     frappe.clear_cache()

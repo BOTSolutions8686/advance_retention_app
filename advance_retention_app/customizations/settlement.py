@@ -431,6 +431,13 @@ def summary(invoice):
     )
     if siaf_name:
         siaf = frappe.get_doc("Sales Invoice Additional Fields", siaf_name)
+        result.integration_status = siaf.integration_status
+        result.clearance_verified = bool(siaf.get("custom_bot_clearance_verified"))
+        result.zatca_environment = frappe.db.get_value(
+            "ZATCA Business Settings",
+            {"company": doc.company, "status": "Active"},
+            "fatoora_server",
+        )
         result.validation = siaf.validation_messages
         if siaf.invoice_xml:
             ns = {

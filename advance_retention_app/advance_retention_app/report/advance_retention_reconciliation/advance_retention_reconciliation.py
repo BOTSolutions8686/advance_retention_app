@@ -56,6 +56,9 @@ def execute(filters=None):
                 hidden=1,
             ),
             dict(label="QR Check", fieldname="check", fieldtype="Data", width=160),
+            dict(label="ZATCA Status", fieldname="integration_status", fieldtype="Data", width=150),
+            dict(label="Environment", fieldname="zatca_environment", fieldtype="Data", width=110),
+            dict(label="Returned XML Verified", fieldname="clearance_verified", fieldtype="Check", width=150),
         ]
     )
     data = []

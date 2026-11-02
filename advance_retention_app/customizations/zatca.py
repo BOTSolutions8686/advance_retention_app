@@ -1,5 +1,7 @@
 from __future__ import annotations
 import html
+import base64
+import json
 from dataclasses import asdict
 from lxml import etree
 import frappe
@@ -96,6 +98,68 @@ def settlement_xml(result, siaf):
 
 
 class SettlementAdditionalFields(Base):
+    def _add_integration_log_document(
+        self, zatca_message, integration_status, zatca_status, status_code
+    ):
+        # The upstream controller logs clearance but leaves the pre-clearance XML/QR
+        # in the document. Keep the original and use the authority's returned copy.
+        if zatca_status == "CLEARED" and status_code in (200, 202):
+            payload = json.loads(zatca_message)
+            if payload.get("clearedInvoice"):
+                self._apply_cleared_invoice(payload)
+        return super()._add_integration_log_document(
+            zatca_message, integration_status, zatca_status, status_code
+        )
+
+    def _apply_cleared_invoice(self, payload):
+        if payload.get("clearanceStatus") != "CLEARED" or payload.get(
+            "validationResults", {}
+        ).get("errorMessages"):
+            fthrow("Cannot apply an unsuccessful clearance response.")
+        submitted = self.get("custom_bot_submitted_xml") or self.invoice_xml
+        cleared = base64.b64decode(payload["clearedInvoice"], validate=True).decode()
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        original = etree.fromstring(submitted.encode(), parser)
+        returned = etree.fromstring(cleared.encode(), parser)
+        ns = {
+            "cbc": "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
+            "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
+            "ext": "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2",
+        }
+        # Clearance may replace only the stamp/signature and QR. Protect every
+        # invoice amount, reference, line, party and settlement Note, not just UUID.
+        for root in (original, returned):
+            for node in root.xpath(
+                "//ext:UBLExtensions | //cac:Signature | //cac:AdditionalDocumentReference[cbc:ID='QR']",
+                namespaces=ns,
+            ):
+                node.getparent().remove(node)
+
+        def content(node):
+            return (
+                node.tag,
+                tuple(sorted(node.attrib.items())),
+                (node.text or "").strip(),
+                tuple(content(child) for child in node),
+            )
+
+        if content(original) != content(returned):
+            fthrow(
+                "Returned clearance XML changes the submitted invoice content; review required."
+            )
+        full = etree.fromstring(cleared.encode(), parser)
+        qr = full.findtext(
+            "cac:AdditionalDocumentReference[cbc:ID='QR']/cac:Attachment/cbc:EmbeddedDocumentBinaryObject",
+            namespaces=ns,
+        )
+        if not qr:
+            fthrow("Returned clearance XML is missing its QR.")
+        base64.b64decode(qr, validate=True)
+        self.custom_bot_submitted_xml = submitted
+        self.invoice_xml = cleared
+        self.qr_code = qr
+        self.custom_bot_clearance_verified = 1
+
     def _prepare_for_zatca(self, settings, invoice_type):
         source = frappe.get_doc(self.invoice_doctype, self.sales_invoice)
         if self.invoice_doctype != "Sales Invoice" or not (
