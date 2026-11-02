@@ -109,7 +109,8 @@ def transfer_retention(invoice, manual=False):
 	can (retransfer_retention).
 	"""
 	si = frappe.get_doc("Sales Invoice", invoice)
-	retention = flt(si.get("custom_retention_amount"))
+	from advance_retention_app.customizations.settlement import effective_retention
+	retention = effective_retention(invoice)
 	if si.docstatus != 1 or si.is_return or not retention:
 		return None
 
@@ -316,7 +317,8 @@ def retention_status(invoice, as_of=None):
 		["docstatus", "debit_to", "custom_retention_amount", "custom_retention_due_date", "currency"],
 		as_dict=True,
 	)
-	retention = flt(si and si.custom_retention_amount)
+	from advance_retention_app.customizations.settlement import effective_retention
+	retention = effective_retention(invoice, as_of) if si else 0
 	if not si or si.docstatus != 1 or not retention:
 		return None
 

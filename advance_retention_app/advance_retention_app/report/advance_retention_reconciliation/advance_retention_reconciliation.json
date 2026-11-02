@@ -1,0 +1,18 @@
+{
+  "doctype": "Report",
+  "name": "Advance Retention Reconciliation",
+  "ref_doctype": "Sales Invoice",
+  "is_standard": "Yes",
+  "report_type": "Script Report",
+  "module": "Advance Retention App",
+  "roles": [
+    {
+      "role": "Accounts User"
+    },
+    {
+      "role": "Accounts Manager"
+    }
+  ],
+  "disabled": 0,
+  "add_total_row": 1
+}

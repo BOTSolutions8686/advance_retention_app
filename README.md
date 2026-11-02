@@ -1,3 +1,5 @@
+> Local candidate 16.3.0: MBL settlement corrections and reconciliation. Not deployed. See [local validation and limits](docs/MBL_LOCAL_VALIDATION.md).
+
 <div align="center" markdown="1">
 	<h2>Advance Retention App</h2>
 	<p align="center">

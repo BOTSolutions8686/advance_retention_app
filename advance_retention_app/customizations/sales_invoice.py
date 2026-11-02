@@ -104,11 +104,17 @@ def apply_retention_holdback(doc, method=None):
 		doc.custom_retention_due_date = None
 
 	rows = doc.get("deductions") or []
-	if any(flt(row.deduction_amount) < 0 for row in rows):
+	if any(flt(row.deduction_amount) < 0 or flt(row.get("vat_holdback_amount")) < 0 for row in rows):
 		frappe.throw(_("Retention amounts cannot be negative."))
-	retention = flt(sum(flt(row.deduction_amount) for row in rows), doc.precision("grand_total"))
+	for row in rows:
+		row.total = flt(flt(row.deduction_amount) + flt(row.get("vat_holdback_amount")), 2)
+		if flt(row.get("vat_holdback_amount")) > flt(row.deduction_amount) * 0.15 + 0.005:
+			frappe.throw(_("VAT portion withheld cannot exceed 15% of the retention principal."))
+	retention = flt(sum(flt(row.deduction_amount) + flt(row.get("vat_holdback_amount")) for row in rows), doc.precision("grand_total"))
 	doc.custom_retention_amount = retention
 
+	doc.custom_bot_retention_principal = flt(sum(flt(row.deduction_amount) for row in rows), 2)
+	doc.custom_bot_retention_vat = flt(sum(flt(row.get("vat_holdback_amount")) for row in rows), 2)
 	_set_net_amount_due(doc, retention)
 
 	# Earlier versions added a retention row to the Payment Schedule; never keep one.

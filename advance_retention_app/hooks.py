@@ -186,17 +186,21 @@ before_uninstall = "advance_retention_app.setup.install.before_uninstall"
 
 doc_events = {
 	"Sales Invoice": {
+		"before_validate": "advance_retention_app.customizations.settlement.before_validate",
+		"before_submit": "advance_retention_app.customizations.settlement.before_submit",
 		"validate": [
 			"advance_retention_app.customizations.prepayment.block_legacy_advance_invoice",
 			"advance_retention_app.customizations.prepayment.validate_sales_invoice_scope",
 			"advance_retention_app.customizations.sales_invoice.apply_retention_holdback",
 			"advance_retention_app.customizations.retention.validate_sales_invoice",
+			"advance_retention_app.customizations.settlement.validate",
 		],
 		"on_submit": [
 			"advance_retention_app.customizations.prepayment.on_submit_sales_invoice",
 			"advance_retention_app.customizations.retention.on_submit_sales_invoice",
+			"advance_retention_app.customizations.settlement.on_submit",
 		],
-		"before_cancel": "advance_retention_app.customizations.retention.before_cancel_sales_invoice",
+		"before_cancel": ["advance_retention_app.customizations.retention.before_cancel_sales_invoice", "advance_retention_app.customizations.settlement.before_cancel"],
 		"on_cancel": "advance_retention_app.customizations.prepayment.on_cancel_sales_invoice",
 	},
 	"Payment Entry": {
@@ -338,3 +342,10 @@ jinja = {
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
+
+override_doctype_class = {
+ "Sales Invoice Additional Fields": "advance_retention_app.customizations.zatca.SettlementAdditionalFields",
+}
+
+fixtures.append({"dt": "Print Format", "filters": [["name", "=", "Advance Retention Settlement"]]})
+jinja["methods"].append("advance_retention_app.customizations.settlement.summary")

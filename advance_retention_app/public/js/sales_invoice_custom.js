@@ -5,6 +5,11 @@ frappe.ui.form.on("Sales Invoice", {
 	refresh: function (frm) {
 		toggle_legacy_advance_section(frm);
 		show_retention_status(frm);
+		show_settlement_actions(frm);
+        if (frm.doc.is_return && frm.doc.custom_bot_reverse_settlement) {
+            frm.set_df_property("update_outstanding_for_self", "read_only", 1);
+            if (frm.doc.docstatus === 0) frm.set_value("update_outstanding_for_self", 0);
+        }
 	},
 	onload: function (frm) {
 		toggle_legacy_advance_section(frm);
@@ -58,7 +63,7 @@ frappe.ui.form.on("Sales Invoice", {
 frappe.ui.form.on("Sales Deduction", {
 	deduction_amount: function (frm, cdt, cdn) {
 		var doc = locals[cdt][cdn];
-		frappe.model.set_value(cdt, cdn, "total", doc.deduction_amount);
+		frappe.model.set_value(cdt, cdn, "total", flt(doc.deduction_amount) + flt(doc.vat_holdback_amount));
 		update_retention_total(frm);
 	},
 	deductions_remove: function (frm) {
@@ -70,7 +75,7 @@ function update_retention_total(frm) {
 	// Display only; the authoritative value and payment schedule are set on save.
 	var total = 0;
 	(frm.doc.deductions || []).forEach(function (row) {
-		total += flt(row.deduction_amount);
+		total += flt(row.deduction_amount) + flt(row.vat_holdback_amount);
 	});
 	frm.set_value("custom_retention_amount", total);
 }
@@ -200,4 +205,39 @@ function show_retention_status(frm) {
 			}
 		},
 	});
+}
+
+frappe.ui.form.on("Sales Deduction", {
+    vat_holdback_amount(frm, cdt, cdn) {
+        const row = locals[cdt][cdn];
+        frappe.model.set_value(cdt, cdn, "total", flt(row.deduction_amount) + flt(row.vat_holdback_amount));
+        update_retention_total(frm);
+    }
+});
+
+function show_settlement_actions(frm) {
+    if (frm.doc.docstatus !== 1) return;
+    if (!frm.doc.is_return && frappe.model.can_create("Sales Invoice")) {
+        frm.add_custom_button(__("Credit with Settlement Reversal"), () => {
+            frappe.call({method: "advance_retention_app.customizations.settlement.make_settlement_credit", args: {invoice: frm.doc.name}, callback(r) {
+                if (r.message) { frappe.model.sync(r.message); frappe.set_route("Form", "Sales Invoice", r.message.name); }
+            }});
+        }, __("Create"));
+    }
+    frm.add_custom_button(__("Settlement Breakdown"), () => {
+        frappe.call({method: "advance_retention_app.customizations.settlement.get_settlement_summary", args: {invoice: frm.doc.name},
+            callback(r) {
+                if (!r.message) return;
+                const s = r.message;
+                const rows = [[__("Invoice Total Including VAT"), s.gross], [__("Full Invoice VAT"), s.invoice_vat],
+                    [__("Advance Adjustment"), s.prepaid], [__("Retention Principal"), s.principal],
+                    [__("Retention VAT Portion Held"), s.retention_vat], [__("Amount Due Now"), s.due_now],
+                    [__("QR Amount"), s.qr["4"]], [__("QR VAT"), s.qr["5"]]];
+                const body = '<table class="table table-bordered">' + rows.map(([label, value]) =>
+                    '<tr><td>' + frappe.utils.escape_html(label) + '</td><td>' + format_currency(value || 0, s.currency) + '</td></tr>').join('') + '</table>';
+                frappe.msgprint({title: __("Settlement Breakdown"), message: body + '<p>' +
+                    __("Retention is a payment holdback. Full invoice VAT remains reported. QR values come from the signed invoice.") + '</p>'});
+            }
+        });
+    });
 }

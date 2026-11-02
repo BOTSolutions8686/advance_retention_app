@@ -8,6 +8,7 @@
  "field_order": [
   "deduction_type",
   "deduction_amount",
+  "vat_holdback_amount",
   "column_break_rojf",
   "total"
  ],
@@ -36,6 +37,14 @@
    "in_list_view": 1,
    "label": "Deduction Amount",
    "precision": "2"
+  },
+  {
+   "fieldname": "vat_holdback_amount",
+   "fieldtype": "Currency",
+   "label": "VAT Portion Withheld",
+   "description": "Payment holdback only; does not reduce invoice VAT.",
+   "default": "0",
+   "in_list_view": 1
   }
  ],
  "index_web_pages_for_search": 1,

@@ -145,6 +145,9 @@ def remove_discount_relabels():
 def after_install():
 	setup_advance_vat_clearing_accounts()
 	setup_retention_receivable_accounts()
+	from advance_retention_app.patches.setup_settlement_fields import execute
+
+	execute()
 
 
 def setup_advance_vat_clearing_accounts():

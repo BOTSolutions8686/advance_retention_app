@@ -192,6 +192,9 @@ def validate_sales_invoice_scope(doc, method=None):
 	)
 	if uses_prepayment or doc.get("deductions"):
 		_require_supported_currency(doc.company, doc.currency)
+		taxes = doc.get("taxes") or []
+		if len(taxes) != 1 or flt(taxes[0].rate) not in SUPPORTED_VAT_RATES:
+			frappe.throw(_("Advance and retention settlements require a single 15% VAT row."))
 
 	# "Get Advances Received" also offers prepayments recorded before 16.1.0. Their VAT
 	# was booked without the clearing correction, so no settlement entry is made for them.

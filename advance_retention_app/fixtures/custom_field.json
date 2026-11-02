@@ -749,7 +749,7 @@
   "columns": 0,
   "default": null,
   "depends_on": null,
-  "description": "Sum of retention rows. Kept in the receivable with full VAT and scheduled as a later payment-schedule installment.",
+  "description": "Retention principal plus VAT portion held for later collection. Full invoice VAT remains reported.",
   "docstatus": 0,
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
