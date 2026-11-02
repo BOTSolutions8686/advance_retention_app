@@ -237,6 +237,11 @@ def block_legacy_advance_invoice(doc, method=None):
 	"""
 	if doc.docstatus != 0:
 		return
+	if doc.is_return and doc.return_against:
+		legacy_type = frappe.db.get_value("Sales Invoice", doc.return_against, "invoice_type")
+		legacy_rows = frappe.db.exists("Advance Payments", {"parent": doc.return_against, "parenttype": "Sales Invoice", "parentfield": "payment_invoices"})
+		if legacy_type == "Advance Invoice" or legacy_rows:
+			frappe.throw(_("Credits against historical Advance Invoice allocations require review. The current settlement workflow supports prepayment Payment Entries."))
 	if doc.get("invoice_type") == "Advance Invoice":
 		frappe.throw(
 			_(

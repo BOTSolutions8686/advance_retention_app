@@ -10,3 +10,4 @@ advance_retention_app.patches.setup_advance_vat_clearing
 advance_retention_app.patches.setup_retention_receivable
 advance_retention_app.patches.setup_settlement_fields
 advance_retention_app.patches.setup_clearance_fields
+advance_retention_app.patches.retire_invoice_type_selector

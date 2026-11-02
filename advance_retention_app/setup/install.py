@@ -148,6 +148,9 @@ def after_install():
 	from advance_retention_app.patches.setup_settlement_fields import execute
 
 	execute()
+	from advance_retention_app.patches.retire_invoice_type_selector import execute as retire_selector
+
+	retire_selector()
 
 
 def setup_advance_vat_clearing_accounts():
